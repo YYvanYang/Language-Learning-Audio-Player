@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, 
-         RepeatOne, Volume2, Settings } from 'lucide-react';
+         RepeatOne, Volume2, Settings, BarChart2 } from 'lucide-react';
 import WaveformVisualizer from './WaveformVisualizer';
 import BookmarkList from './BookmarkList';
 import ABLoopControl from './ABLoopControl';
@@ -36,17 +36,22 @@ const AudioPlayer = ({
   const [isLoopActive, setIsLoopActive] = useState(false);
   const [processingEnabled, setProcessingEnabled] = useState(false);
   const [eqSettings, setEqSettings] = useState({ bass: 1.0, mid: 1.0, treble: 1.0 });
+  const [visualizerEnabled, setVisualizerEnabled] = useState(false);
+  const [visualizerData, setVisualizerData] = useState(new Uint8Array(0));
   
   // Refs
   const audioContextRef = useRef(null);
   const sourceNodeRef = useRef(null);
   const gainNodeRef = useRef(null);
-  const processorNodeRef = useRef(null);
   const audioBufferRef = useRef(null);
   const startTimeRef = useRef(0);
   const pausedTimeRef = useRef(0);
   const progressBarRef = useRef(null);
   const wasmProcessorRef = useRef(null);
+  const analyserNodeRef = useRef(null);
+  const visualizerCanvasRef = useRef(null);
+  const visualizerFrameRef = useRef(null);
+  const workletNodeRef = useRef(null);
   
   // 将当前轨道ID传递给父组件
   useEffect(() => {
@@ -58,31 +63,78 @@ const AudioPlayer = ({
   // 初始化音频上下文
   useEffect(() => {
     if (typeof window !== 'undefined' && !audioContextRef.current) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      audioContextRef.current = new AudioContext();
-      gainNodeRef.current = audioContextRef.current.createGain();
-      gainNodeRef.current.connect(audioContextRef.current.destination);
-      
-      // 初始化WebAssembly音频处理器
-      initAudioProcessor().then(processor => {
-        wasmProcessorRef.current = processor;
-        console.log('WebAssembly音频处理器已初始化');
-      }).catch(err => {
-        console.error('WebAssembly处理器初始化失败:', err);
-      });
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioContextRef.current = new AudioContext();
+        
+        // 创建增益节点（音量控制）
+        gainNodeRef.current = audioContextRef.current.createGain();
+        gainNodeRef.current.connect(audioContextRef.current.destination);
+        
+        // 创建分析器节点（用于可视化）
+        analyserNodeRef.current = audioContextRef.current.createAnalyser();
+        analyserNodeRef.current.fftSize = 256;
+        analyserNodeRef.current.smoothingTimeConstant = 0.8;
+        analyserNodeRef.current.connect(audioContextRef.current.destination);
+        
+        // 初始化WebAssembly音频处理器
+        initAudioProcessor().then(processor => {
+          wasmProcessorRef.current = processor;
+          console.log('WebAssembly音频处理器已初始化');
+          
+          // 尝试加载AudioWorklet
+          if (audioContextRef.current.audioWorklet) {
+            // 注册音频处理工作线程
+            const workletUrl = '/audio-processors/equalizer-processor.js';
+            audioContextRef.current.audioWorklet.addModule(workletUrl)
+              .then(() => {
+                console.log('AudioWorklet模块已加载');
+              })
+              .catch(err => {
+                console.warn('AudioWorklet加载失败，将使用备用处理方法:', err);
+              });
+          }
+        }).catch(err => {
+          console.error('WebAssembly处理器初始化失败:', err);
+        });
+      } catch (err) {
+        console.error('音频上下文初始化失败:', err);
+        setError('音频系统初始化失败，请刷新页面重试');
+      }
     }
     
+    // 清理函数
     return () => {
+      // 停止可视化动画
+      if (visualizerFrameRef.current) {
+        cancelAnimationFrame(visualizerFrameRef.current);
+      }
+      
+      // 停止音频播放
       if (sourceNodeRef.current) {
-        sourceNodeRef.current.stop();
+        try {
+          sourceNodeRef.current.stop();
+        } catch (err) {
+          // 忽略已停止的节点错误
+        }
       }
       
-      if (processorNodeRef.current) {
-        processorNodeRef.current.disconnect();
+      // 断开工作线程节点
+      if (workletNodeRef.current) {
+        try {
+          workletNodeRef.current.disconnect();
+        } catch (err) {
+          // 忽略已断开的节点错误
+        }
       }
       
+      // 关闭音频上下文
       if (audioContextRef.current) {
-        audioContextRef.current.close();
+        try {
+          audioContextRef.current.close();
+        } catch (err) {
+          console.error('关闭音频上下文失败:', err);
+        }
       }
     };
   }, []);
@@ -244,8 +296,21 @@ const AudioPlayer = ({
     
     // 停止当前播放的音频
     if (sourceNodeRef.current) {
-      sourceNodeRef.current.stop();
-      sourceNodeRef.current.disconnect();
+      try {
+        sourceNodeRef.current.stop();
+        sourceNodeRef.current.disconnect();
+      } catch (err) {
+        // 忽略已停止的节点错误
+      }
+    }
+    
+    // 断开旧的工作线程节点
+    if (workletNodeRef.current) {
+      try {
+        workletNodeRef.current.disconnect();
+      } catch (err) {
+        // 忽略已断开的节点错误
+      }
     }
     
     // 创建新的音源节点
@@ -257,52 +322,63 @@ const AudioPlayer = ({
     let lastNode = sourceNodeRef.current;
     
     // 如果启用了音频处理，添加处理节点
-    if (processingEnabled && wasmProcessorRef.current) {
+    if (processingEnabled) {
       try {
-        // 使用Script Processor Node应用WebAssembly处理
-        const processorNode = audioContextRef.current.createScriptProcessor(4096, 2, 2);
-        processorNode.onaudioprocess = async (e) => {
-          if (!wasmProcessorRef.current) return;
+        // 使用AudioWorklet（如果可用）
+        if (audioContextRef.current.audioWorklet && 'AudioWorkletNode' in window) {
+          workletNodeRef.current = new AudioWorkletNode(audioContextRef.current, 'equalizer-processor', {
+            parameterData: {
+              bass: eqSettings.bass,
+              mid: eqSettings.mid,
+              treble: eqSettings.treble
+            }
+          });
           
-          const inputL = e.inputBuffer.getChannelData(0);
-          const inputR = e.inputBuffer.getChannelData(1);
-          const outputL = e.outputBuffer.getChannelData(0);
-          const outputR = e.outputBuffer.getChannelData(1);
+          // 连接工作线程节点
+          lastNode.connect(workletNodeRef.current);
+          workletNodeRef.current.connect(gainNodeRef.current);
           
-          // 处理左声道
-          const processedL = await wasmProcessorRef.current.applyEqualizer(
-            inputL,
-            eqSettings.bass,
-            eqSettings.mid,
-            eqSettings.treble
-          );
-          
-          // 处理右声道
-          const processedR = await wasmProcessorRef.current.applyEqualizer(
-            inputR,
-            eqSettings.bass,
-            eqSettings.mid,
-            eqSettings.treble
-          );
-          
-          // 复制处理后的数据到输出
-          outputL.set(processedL || inputL);
-          outputR.set(processedR || inputR);
-        };
-        
-        // 连接处理节点
-        lastNode.connect(processorNode);
-        processorNode.connect(gainNodeRef.current);
-        processorNodeRef.current = processorNode;
-        
+          // 更新参数
+          if (workletNodeRef.current.parameters) {
+            workletNodeRef.current.parameters.get('bass').setValueAtTime(
+              eqSettings.bass, audioContextRef.current.currentTime
+            );
+            workletNodeRef.current.parameters.get('mid').setValueAtTime(
+              eqSettings.mid, audioContextRef.current.currentTime
+            );
+            workletNodeRef.current.parameters.get('treble').setValueAtTime(
+              eqSettings.treble, audioContextRef.current.currentTime
+            );
+          }
+        } else {
+          // 如果AudioWorklet不可用，直接连接增益节点
+          console.warn('AudioWorklet不可用，音频处理已禁用');
+          lastNode.connect(gainNodeRef.current);
+          // 禁用处理以避免再次尝试
+          setProcessingEnabled(false);
+        }
       } catch (err) {
         console.error('音频处理节点创建失败:', err);
         // 如果处理节点创建失败，直接连接增益节点
         lastNode.connect(gainNodeRef.current);
+        // 禁用处理以避免再次尝试
+        setProcessingEnabled(false);
       }
     } else {
       // 没有启用处理，直接连接增益节点
       lastNode.connect(gainNodeRef.current);
+    }
+    
+    // 如果启用了可视化，连接分析器节点
+    if (visualizerEnabled && analyserNodeRef.current) {
+      // 将增益节点连接到分析器节点
+      gainNodeRef.current.connect(analyserNodeRef.current);
+      
+      // 开始可视化
+      startVisualizer();
+    } else {
+      // 确保增益节点直接连接到目标
+      gainNodeRef.current.connect(audioContextRef.current.destination);
     }
     
     // 计算开始时间（用于进度追踪）
@@ -564,7 +640,11 @@ const AudioPlayer = ({
     // 如果正在播放，重新创建处理链
     if (isPlaying) {
       const currentPosition = pausedTimeRef.current;
-      sourceNodeRef.current.stop();
+      try {
+        sourceNodeRef.current.stop();
+      } catch (err) {
+        // 忽略已停止的节点错误
+      }
       playAudioBuffer(currentPosition);
     }
   };
@@ -572,6 +652,93 @@ const AudioPlayer = ({
   // 更新均衡器设置
   const updateEqualizer = (bass, mid, treble) => {
     setEqSettings({ bass, mid, treble });
+    
+    // 如果使用AudioWorklet，直接更新参数
+    if (workletNodeRef.current && workletNodeRef.current.parameters) {
+      workletNodeRef.current.parameters.get('bass').setValueAtTime(
+        bass, audioContextRef.current.currentTime
+      );
+      workletNodeRef.current.parameters.get('mid').setValueAtTime(
+        mid, audioContextRef.current.currentTime
+      );
+      workletNodeRef.current.parameters.get('treble').setValueAtTime(
+        treble, audioContextRef.current.currentTime
+      );
+    }
+  };
+  
+  // 切换可视化器
+  const toggleVisualizer = () => {
+    const newState = !visualizerEnabled;
+    setVisualizerEnabled(newState);
+    
+    if (newState) {
+      // 启用可视化
+      if (isPlaying) {
+        // 连接分析器节点
+        gainNodeRef.current.connect(analyserNodeRef.current);
+        // 开始可视化
+        startVisualizer();
+      }
+    } else {
+      // 禁用可视化
+      if (visualizerFrameRef.current) {
+        cancelAnimationFrame(visualizerFrameRef.current);
+      }
+      
+      // 断开分析器节点
+      try {
+        gainNodeRef.current.disconnect(analyserNodeRef.current);
+        // 确保增益节点直接连接到目标
+        gainNodeRef.current.connect(audioContextRef.current.destination);
+      } catch (err) {
+        // 忽略已断开的节点错误
+      }
+    }
+  };
+  
+  // 开始可视化
+  const startVisualizer = () => {
+    if (!analyserNodeRef.current || !visualizerCanvasRef.current) return;
+    
+    const analyser = analyserNodeRef.current;
+    const canvas = visualizerCanvasRef.current;
+    const canvasCtx = canvas.getContext('2d');
+    
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    const WIDTH = canvas.width;
+    const HEIGHT = canvas.height;
+    
+    canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+    
+    const draw = () => {
+      visualizerFrameRef.current = requestAnimationFrame(draw);
+      
+      analyser.getByteFrequencyData(dataArray);
+      
+      canvasCtx.fillStyle = 'rgb(240, 240, 245)';
+      canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
+      
+      const barWidth = (WIDTH / bufferLength) * 2.5;
+      let barHeight;
+      let x = 0;
+      
+      for (let i = 0; i < bufferLength; i++) {
+        barHeight = dataArray[i] / 2;
+        
+        canvasCtx.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
+        canvasCtx.fillRect(x, HEIGHT - barHeight, barWidth, barHeight);
+        
+        x += barWidth + 1;
+      }
+      
+      // 更新可视化数据状态（用于其他组件）
+      setVisualizerData(dataArray);
+    };
+    
+    draw();
   };
   
   // 更改播放模式
@@ -678,6 +845,17 @@ const AudioPlayer = ({
 
       {/* 波形可视化 */}
       <div className="px-4 mt-4">
+        {visualizerEnabled && (
+          <div className="mb-4 border rounded-lg overflow-hidden">
+            <canvas 
+              ref={visualizerCanvasRef} 
+              className="w-full h-32 bg-gray-50"
+              width="600"
+              height="128"
+            ></canvas>
+          </div>
+        )}
+        
         <WaveformVisualizer 
           waveformData={waveformData}
           currentTime={currentTime}
@@ -741,11 +919,19 @@ const AudioPlayer = ({
             </button>
           
             <button 
-              className={`flex items-center ${repeatMode ? 'text-yellow-500' : 'text-gray-600'}`} 
+              className={`flex items-center ${repeatMode ? 'text-yellow-500' : 'text-gray-600'} mr-4`} 
               onClick={toggleRepeatMode}
             >
               <RepeatOne size={18} className="mr-1" />
               <span className="text-sm">复读</span>
+            </button>
+            
+            <button 
+              className={`flex items-center ${visualizerEnabled ? 'text-blue-500' : 'text-gray-600'}`} 
+              onClick={toggleVisualizer}
+            >
+              <BarChart2 size={18} className="mr-1" />
+              <span className="text-sm">可视化</span>
             </button>
           </div>
           
