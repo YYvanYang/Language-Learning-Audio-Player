@@ -6,6 +6,9 @@ alwaysApply: false
 
 # Your rule content
 
-- [tech.md](mdc:.cursor/rules/tech.md)
+- tech stack [tech.md](mdc:.cursor/rules/tech.md)
 - [app.md](mdc:.cursor/rules/app.md)
 - app 参考界面 [preview.webp](mdc:.cursor/rules/preview.webp)
+- MDN Web Audio API example: 
+- Web Audio API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API
+- Using the Web Audio API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API
