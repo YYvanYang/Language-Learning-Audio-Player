@@ -14,7 +14,8 @@ const AudioPlayer = ({
   unitId, 
   userId, 
   tracks = [],
-  onTrackChange
+  onTrackChange,
+  authKey
 }) => {
   // 基本状态
   const [isPlaying, setIsPlaying] = useState(false);
@@ -86,6 +87,47 @@ const AudioPlayer = ({
     };
   }, []);
   
+  // 初始化加载课程数据（如果没有提供 tracks）
+  useEffect(() => {
+    // 如果已经提供了 tracks，则不需要从服务器获取
+    if (tracks && tracks.length > 0) return;
+    
+    const fetchCourseData = async () => {
+      try {
+        // 创建访问令牌
+        const token = generateToken({
+          courseId,
+          unitId,
+          userId,
+          action: 'get_tracks',
+          timestamp: Date.now()
+        }, authKey);
+        
+        const response = await fetch(`/api/course/tracks`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to load course data');
+        }
+        
+        const data = await response.json();
+        if (data.tracks && data.tracks.length > 0) {
+          setTracks(data.tracks);
+        }
+      } catch (err) {
+        setError('加载课程失败，请刷新页面重试');
+        console.error('Error fetching course data:', err);
+      }
+    };
+    
+    fetchCourseData();
+  }, [courseId, unitId, userId, authKey, tracks]);
+  
   // 加载音频函数
   const loadAudio = async (trackIndex) => {
     if (!tracks[trackIndex]) return;
@@ -103,7 +145,7 @@ const AudioPlayer = ({
         userId,
         action: 'stream_audio',
         timestamp: Date.now()
-      });
+      }, authKey);
       
       // 请求音频数据
       const response = await fetch('/api/audio/stream', {
@@ -179,7 +221,7 @@ const AudioPlayer = ({
         userId,
         action: 'stream_audio',
         timestamp: Date.now()
-      });
+      }, authKey);
       
       // 仅请求但不处理
       fetch('/api/audio/stream', {
@@ -532,6 +574,17 @@ const AudioPlayer = ({
     setEqSettings({ bass, mid, treble });
   };
   
+  // 更改播放模式
+  const toggleRepeatMode = () => {
+    setRepeatMode(!repeatMode);
+  };
+  
+  // 调整音量
+  const handleVolumeChange = (e) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+  };
+  
   return (
     <div className="flex flex-col bg-blue-50 rounded-lg overflow-hidden">
       {/* 课程信息和标题 */}
@@ -689,7 +742,7 @@ const AudioPlayer = ({
           
             <button 
               className={`flex items-center ${repeatMode ? 'text-yellow-500' : 'text-gray-600'}`} 
-              onClick={() => setRepeatMode(!repeatMode)}
+              onClick={toggleRepeatMode}
             >
               <RepeatOne size={18} className="mr-1" />
               <span className="text-sm">复读</span>
@@ -714,7 +767,7 @@ const AudioPlayer = ({
                 max="1"
                 step="0.01"
                 value={volume}
-                onChange={(e) => setVolume(parseFloat(e.target.value))}
+                onChange={handleVolumeChange}
                 className="w-full accent-yellow-500"
               />
             </div>
