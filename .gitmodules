@@ -1,0 +1,3 @@
+[submodule "webaudio-examples"]
+	path = webaudio-examples
+	url = https://github.com/mdn/webaudio-examples.git
