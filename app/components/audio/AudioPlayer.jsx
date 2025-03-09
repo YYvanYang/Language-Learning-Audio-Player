@@ -184,6 +184,11 @@ const AudioPlayer = ({
   const loadAudio = async (trackIndex) => {
     if (!tracks[trackIndex]) return;
     
+    // 清理之前的连接和资源
+    if (audioBufferRef.current) {
+      audioBufferRef.current = null;
+    }
+    
     try {
       setIsReady(false);
       setIsBuffering(true);
@@ -751,6 +756,21 @@ const AudioPlayer = ({
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
   };
+  
+  useEffect(() => {
+    // 初始化音频上下文
+    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // 清理函数
+    return () => {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      if (audioBufferRef.current) {
+        audioBufferRef.current = null;
+      }
+    };
+  }, []);
   
   return (
     <div className="flex flex-col bg-blue-50 rounded-lg overflow-hidden">
