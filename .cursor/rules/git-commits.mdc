@@ -1,0 +1,117 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ ---
+description: Git提交规范和自动化
+globs: "*"
+alwaysApply: true
+---
+
+# Git Conventional Commits 规范
+
+本规则为项目实现基于Conventional Commits规范的自动提交功能，确保所有代码提交遵循一致的格式和规范。
+
+<rule>
+name: conventional_commits
+description: 自动使用Conventional Commits格式提交Cursor AI的更改
+filters:
+  - type: event
+    pattern: "build_success"
+  - type: file_change
+    pattern: "*"
+
+actions:
+  - type: execute
+    command: |
+      # 根据更改内容提取提交类型
+      CHANGE_TYPE=""
+      case "$CHANGE_DESCRIPTION" in
+        *"添加"*|*"新增"*|*"实现"*|*"add"*|*"create"*|*"implement"*) CHANGE_TYPE="feat";;
+        *"修复"*|*"解决"*|*"fix"*|*"correct"*|*"resolve"*) CHANGE_TYPE="fix";;
+        *"重构"*|*"refactor"*|*"restructure"*) CHANGE_TYPE="refactor";;
+        *"测试"*|*"test"*) CHANGE_TYPE="test";;
+        *"文档"*|*"doc"*|*"comment"*) CHANGE_TYPE="docs";;
+        *"样式"*|*"格式"*|*"style"*|*"format"*) CHANGE_TYPE="style";;
+        *"性能"*|*"优化"*|*"perf"*|*"optimize"*) CHANGE_TYPE="perf";;
+        *"构建"*|*"build"*) CHANGE_TYPE="build";;
+        *"ci"*|*"持续集成"*) CHANGE_TYPE="ci";;
+        *"回退"*|*"revert"*) CHANGE_TYPE="revert";;
+        *) CHANGE_TYPE="chore";;
+      esac
+
+      # 根据文件路径提取范围
+      if [[ "$FILE" == web-client/* ]]; then
+        SCOPE="web-client"
+        # 进一步细分前端范围
+        if [[ "$FILE" == web-client/components/* ]]; then
+          SCOPE="components"
+        elif [[ "$FILE" == web-client/lib/* ]]; then
+          SCOPE="lib"
+        elif [[ "$FILE" == web-client/app/* ]]; then
+          SCOPE="app"
+        fi
+      elif [[ "$FILE" == backend/* ]]; then
+        SCOPE="backend"
+        # 进一步细分后端范围
+        if [[ "$FILE" == backend/handlers/* ]]; then
+          SCOPE="api"
+        elif [[ "$FILE" == backend/auth/* ]]; then
+          SCOPE="auth"
+        elif [[ "$FILE" == backend/audio/* ]]; then
+          SCOPE="audio"
+        fi
+      else
+        # 其他文件使用目录名作为范围
+        SCOPE=$(dirname "$FILE" | tr '/' '-')
+      fi
+
+      # 提交更改
+      git add "$FILE"
+      git commit -m "$CHANGE_TYPE($SCOPE): $CHANGE_DESCRIPTION"
+
+  - type: suggest
+    message: |
+      代码更改已使用Conventional Commits格式提交：
+
+      格式: <类型>(<范围>): <描述>
+
+      类型:
+      - feat: 新功能
+      - fix: 修复bug
+      - docs: 文档变更
+      - style: 不影响代码含义的变更（空白、格式化等）
+      - refactor: 既不修复bug也不添加功能的代码重构
+      - perf: 性能优化
+      - test: 添加或修正测试
+      - build: 影响构建系统或外部依赖的更改
+      - ci: CI配置文件和脚本的更改
+      - chore: 其他不修改src或test文件的更改
+      - revert: 撤销之前的提交
+
+      范围应该是更改代码所属的组件或模块，描述应该简明扼要地说明变更的内容。
+
+examples:
+  - input: |
+      # 添加用户验证功能
+      CHANGE_DESCRIPTION="添加用户登录验证功能"
+      FILE="web-client/lib/auth.ts"
+    output: "feat(lib): 添加用户登录验证功能"
+
+  - input: |
+      # 修复音频播放器Bug
+      CHANGE_DESCRIPTION="修复音频无法循环播放的问题"
+      FILE="web-client/components/AudioPlayer.tsx"
+    output: "fix(components): 修复音频无法循环播放的问题"
+
+  - input: |
+      # 优化后端性能
+      CHANGE_DESCRIPTION="优化音频流处理性能"
+      FILE="backend/audio/processor.go"
+    output: "perf(audio): 优化音频流处理性能"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

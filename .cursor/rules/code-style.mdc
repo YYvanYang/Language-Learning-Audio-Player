@@ -1,0 +1,639 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ ---
+description: 编码规范和风格指南
+globs: "**/*.{js,jsx,ts,tsx,go,rs}"
+alwaysApply: true
+---
+
+# 代码风格规范
+
+本文档详细说明语言学习音频播放器项目的编码规范和风格指南。所有代码必须遵循这些规范以确保一致性和可维护性。
+
+## TypeScript/JavaScript 风格指南
+
+### 基本格式
+
+- 使用 2 空格缩进
+- 使用分号结束语句
+- 行宽限制在 100 字符
+- 使用单引号定义字符串
+- 代码块始终使用大括号，即使只有一条语句
+
+```typescript
+// 不好的写法
+if (condition)
+  doSomething();
+
+// 好的写法
+if (condition) {
+  doSomething();
+}
+```
+
+### 命名约定
+
+- **文件名**:
+  - React 组件使用 PascalCase (如 `AudioPlayer.tsx`)
+  - 工具函数使用 camelCase (如 `audioUtils.ts`)
+  - 类型定义使用 PascalCase (如 `AudioTypes.ts`)
+
+- **变量和函数**:
+  - 使用 camelCase 命名变量和函数
+  - 布尔变量使用 `is`, `has`, `should` 等前缀
+  - 常量使用 UPPER_SNAKE_CASE
+
+```typescript
+// 变量命名示例
+const audioElement = document.querySelector('audio');
+const isPlaying = false;
+const hasLoadedMetadata = true;
+const MAX_VOLUME = 1.0;
+
+// 函数命名示例
+function playAudio() { /* ... */ }
+function handleVolumeChange(event) { /* ... */ }
+```
+
+- **React 组件**:
+  - 组件名使用 PascalCase
+  - 实例引用使用 camelCase
+
+```typescript
+// 组件命名
+function AudioPlayer() { /* ... */ }
+const audioPlayerRef = useRef(null);
+```
+
+- **类和接口**:
+  - 类和接口名使用 PascalCase
+  - 接口不使用 `I` 前缀
+
+```typescript
+// 类和接口命名
+class AudioProcessor { /* ... */ }
+interface AudioPlayerProps { /* ... */ }
+```
+
+### TypeScript 类型规范
+
+- 尽可能使用类型推断
+- 为函数参数和返回值提供明确类型
+- 使用接口定义对象结构
+- 使用类型别名定义联合类型和交叉类型
+- 使用枚举表示固定常量集
+
+```typescript
+// 类型定义示例
+interface Track {
+  id: string;
+  title: string;
+  artist?: string;
+  duration: number;
+}
+
+type PlaybackState = 'playing' | 'paused' | 'stopped';
+
+enum LoopMode {
+  NONE,
+  SINGLE,
+  ALL
+}
+
+// 函数类型示例
+function formatTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = Math.floor(seconds % 60);
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+```
+
+### React 组件结构
+
+遵循以下组件结构:
+
+```typescript
+// 1. 导入语句
+import React, { useState, useEffect, useRef } from 'react';
+import { Track } from '@/types';
+import { formatTime } from '@/utils/time';
+
+// 2. 类型定义
+interface AudioPlayerProps {
+  track: Track;
+  autoPlay?: boolean;
+  onPlay?: () => void;
+  onPause?: () => void;
+}
+
+// 3. 组件定义
+export default function AudioPlayer({
+  track,
+  autoPlay = false,
+  onPlay,
+  onPause,
+}: AudioPlayerProps) {
+  // 4. 状态定义
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  
+  // 5. 引用定义
+  const audioRef = useRef<HTMLAudioElement>(null);
+  
+  // 6. 副作用
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    // 设置事件监听器
+    const handleTimeUpdate = () => {
+      setCurrentTime(audioRef.current?.currentTime || 0);
+    };
+    
+    audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+    
+    return () => {
+      audioRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, []);
+  
+  // 7. 回调函数
+  const handlePlayPause = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      onPause?.();
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+      onPlay?.();
+    }
+  };
+  
+  // 8. 渲染方法
+  return (
+    <div className="audio-player">
+      <h3>{track.title}</h3>
+      <p>{track.artist}</p>
+      
+      <div className="controls">
+        <button onClick={handlePlayPause}>
+          {isPlaying ? 'Pause' : 'Play'}
+        </button>
+        <span>{formatTime(currentTime)} / {formatTime(track.duration)}</span>
+      </div>
+      
+      <audio
+        ref={audioRef}
+        src={`/api/audio/${track.id}`}
+        autoPlay={autoPlay}
+      />
+    </div>
+  );
+}
+```
+
+### 注释规范
+
+- 使用 JSDoc 风格注释函数和类
+- 为复杂逻辑添加清晰的说明
+- 避免注释显而易见的代码
+
+```typescript
+/**
+ * 从音频缓冲区生成波形数据
+ * @param {AudioBuffer} buffer - 音频缓冲区
+ * @param {number} numPoints - 生成的波形数据点数
+ * @returns {Float32Array} 波形数据数组
+ */
+function generateWaveformData(buffer: AudioBuffer, numPoints: number): Float32Array {
+  // 复杂处理逻辑...
+  return waveformData;
+}
+```
+
+### 导入/导出规范
+
+- 按以下顺序进行导入:
+  1. 外部库
+  2. 内部绝对路径导入
+  3. 内部相对路径导入
+- 组件优先使用命名导出而非默认导出
+- 工具函数使用命名导出
+
+```typescript
+// 导入顺序示例
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+
+import { Track } from '@/types';
+import { useAudioContext } from '@/hooks/useAudioContext';
+
+import { formatTime } from '../utils/time';
+import TrackInfo from './TrackInfo';
+
+// 导出示例
+export function AudioPlayer() { /* ... */ }
+export { TrackList, TrackItem };
+```
+
+### 错误处理
+
+- 使用 try/catch 处理异步操作错误
+- 提供有意义的错误消息
+- 使用类型守卫处理可能为空的值
+
+```typescript
+// 错误处理示例
+async function loadAudio(url: string): Promise<AudioBuffer> {
+  try {
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch audio: ${response.statusText}`);
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    
+    if (!arrayBuffer) {
+      throw new Error('Received empty audio data');
+    }
+    
+    const audioContext = new AudioContext();
+    return await audioContext.decodeAudioData(arrayBuffer);
+  } catch (error) {
+    console.error('Error loading audio:', error);
+    throw error;
+  }
+}
+
+// 类型守卫示例
+function processAudioElement(element: HTMLAudioElement | null): void {
+  if (!element) {
+    console.warn('Audio element is not available');
+    return;
+  }
+  
+  // 处理有效的音频元素...
+}
+```
+
+## Golang 编码规范
+
+### 命名约定
+
+- 包名使用小写单词，不使用下划线或混合大小写
+- 导出函数和变量使用 PascalCase
+- 非导出函数和变量使用 camelCase
+- 接口名通常以 'er' 结尾（例如 `Reader`, `Writer`）
+- 常量使用 PascalCase
+
+```go
+// 包名
+package audio
+
+// 导出类型和函数
+type AudioFile struct {
+  Path string
+  Size int64
+}
+
+func ProcessAudio(file *AudioFile) error {
+  // ...
+}
+
+// 非导出函数和变量
+func validateFormat(path string) bool {
+  // ...
+}
+
+var defaultBufferSize = 4096
+```
+
+### 代码组织
+
+- 按以下顺序排列代码:
+  1. 包声明
+  2. 导入语句
+  3. 常量
+  4. 类型定义
+  5. 变量
+  6. 函数定义
+
+```go
+// 示例文件结构
+package audio
+
+import (
+  "errors"
+  "fmt"
+  "io"
+  "os"
+)
+
+const (
+  MaxFileSize = 1024 * 1024 * 100 // 100MB
+  DefaultBufferSize = 4096
+)
+
+type AudioProcessor struct {
+  // ...
+}
+
+var (
+  errInvalidFormat = errors.New("invalid audio format")
+  supportedFormats = []string{"mp3", "wav", "ogg"}
+)
+
+func NewAudioProcessor() *AudioProcessor {
+  // ...
+}
+```
+
+### 错误处理
+
+- 使用有意义的错误消息
+- 返回错误而不是使用 panic
+- 使用 `errors.New` 或 `fmt.Errorf` 创建错误
+
+```go
+// 错误处理示例
+func ReadAudioFile(path string) (*AudioFile, error) {
+  if _, err := os.Stat(path); os.IsNotExist(err) {
+    return nil, fmt.Errorf("audio file not found: %s", path)
+  }
+  
+  file, err := os.Open(path)
+  if err != nil {
+    return nil, fmt.Errorf("failed to open audio file: %w", err)
+  }
+  defer file.Close()
+  
+  // 文件处理...
+  
+  return &AudioFile{/*...*/}, nil
+}
+```
+
+### 注释规范
+
+- 所有导出的函数、类型和常量都应有注释
+- 包应有清晰的包注释
+- 使用完整句子，以被注释项的名称开头
+
+```go
+// Package audio provides utilities for processing and streaming audio files.
+package audio
+
+// MaxFileSize defines the maximum allowed size for uploaded audio files in bytes.
+const MaxFileSize = 1024 * 1024 * 100 // 100MB
+
+// AudioProcessor handles audio decoding and processing operations.
+type AudioProcessor struct {
+  // ...
+}
+
+// ProcessAudio decodes and processes the given audio file.
+// It returns an error if the file format is unsupported or processing fails.
+func ProcessAudio(file *AudioFile) error {
+  // ...
+}
+```
+
+## Rust WebAssembly 编码规范
+
+### 命名约定
+
+- 使用蛇形命名法 (snake_case) 命名变量和函数
+- 使用驼峰命名法 (PascalCase) 命名类型和特性
+- 使用全大写蛇形命名法 (SCREAMING_SNAKE_CASE) 命名常量
+
+```rust
+// 示例命名
+const MAX_BUFFER_SIZE: usize = 4096;
+
+struct AudioProcessor {
+    sample_rate: u32,
+    channels: u8,
+}
+
+trait AudioProcessing {
+    fn process_buffer(&self, buffer: &mut [f32]);
+}
+
+fn generate_waveform(audio_data: &[f32], num_points: usize) -> Vec<f32> {
+    // ...
+}
+```
+
+### 代码组织
+
+- 按以下顺序排列代码:
+  1. 模块声明
+  2. 导入语句
+  3. 常量
+  4. 结构体和枚举定义
+  5. 实现块
+  6. 函数定义
+
+```rust
+// 示例文件结构
+mod utils;
+
+use wasm_bindgen::prelude::*;
+use js_sys::{Float32Array, Uint8Array};
+
+const SAMPLE_RATE: u32 = 44100;
+
+#[wasm_bindgen]
+pub struct AudioProcessor {
+    buffer: Vec<f32>,
+    channels: u8,
+}
+
+#[wasm_bindgen]
+impl AudioProcessor {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        AudioProcessor {
+            buffer: Vec::new(),
+            channels: 2,
+        }
+    }
+    
+    pub fn process_audio(&mut self, audio_data: &[f32]) {
+        // 处理逻辑...
+    }
+}
+
+fn internal_helper_function() {
+    // ...
+}
+```
+
+### WebAssembly 特定规范
+
+- 使用 `#[wasm_bindgen]` 标记要导出到 JavaScript 的函数和类型
+- 使用适当的类型转换处理 JavaScript 和 Rust 类型
+- 避免在 WebAssembly 中进行复杂的 I/O 操作
+
+```rust
+// WebAssembly 导出示例
+#[wasm_bindgen]
+pub fn generate_waveform(audio_data: &[f32], num_points: u32) -> Box<[f32]> {
+    let mut result = vec![0.0; num_points as usize];
+    
+    // 计算波形...
+    
+    result.into_boxed_slice()
+}
+
+// JavaScript 类型转换示例
+#[wasm_bindgen]
+pub fn process_js_array(js_array: &Float32Array) -> Float32Array {
+    let mut rust_vec = vec![0.0; js_array.length() as usize];
+    js_array.copy_to(&mut rust_vec);
+    
+    // 处理数据...
+    
+    Float32Array::from(&rust_vec[..])
+}
+```
+
+### 错误处理
+
+- 使用 `Result` 类型处理可能失败的操作
+- 对于 WebAssembly 接口，考虑使用更简单的错误处理
+- 返回有意义的错误消息
+
+```rust
+// Rust 内部错误处理
+fn internal_function() -> Result<Vec<f32>, String> {
+    if some_condition {
+        return Err("Invalid audio format".to_string());
+    }
+    
+    Ok(vec![0.0, 0.5, 1.0])
+}
+
+// WebAssembly 错误处理
+#[wasm_bindgen]
+pub fn safe_process(data: &[f32]) -> JsValue {
+    match internal_function() {
+        Ok(result) => JsValue::from_serde(&result).unwrap(),
+        Err(msg) => {
+            let error = js_sys::Error::new(&msg);
+            JsValue::from(error)
+        }
+    }
+}
+```
+
+## CSS/Tailwind 风格指南
+
+### 类命名约定
+
+- 使用 kebab-case 命名自定义 CSS 类
+- 基于组件名称命名 CSS 类，避免冲突
+- 使用 BEM 命名约定处理组件关系
+
+```css
+/* BEM 命名约定 */
+.audio-player { /* 块 */ }
+.audio-player__control { /* 元素 */ }
+.audio-player__control--active { /* 修饰符 */ }
+```
+
+### Tailwind 使用规则
+
+- 优先使用 Tailwind 类
+- 避免编写自定义 CSS，除非确实需要
+- 对于重复的模式，使用 Tailwind @apply 指令创建可重用的类
+
+```tsx
+// 首选使用 Tailwind 类
+<button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+  Play
+</button>
+
+// CSS 文件中的 @apply 示例
+.btn-primary {
+  @apply px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700;
+}
+```
+
+### 响应式设计规范
+
+- 使用 Tailwind 的响应式前缀处理不同屏幕尺寸
+- 始终使用 Mobile-First 的方法（默认编写移动样式，然后添加更大屏幕的样式）
+
+```tsx
+// 响应式设计示例
+<div className="p-4 md:p-6 lg:p-8">
+  <h2 className="text-lg md:text-xl lg:text-2xl">Audio Player</h2>
+  <div className="flex flex-col md:flex-row">
+    {/* 内容 */}
+  </div>
+</div>
+```
+
+## 提交消息规范
+
+使用 Conventional Commits 规范:
+
+```
+<type>(<scope>): <subject>
+```
+
+- **type**: 提交类型，如 feat, fix, docs, style, refactor, perf, test, chore 等
+- **scope**: 可选，影响范围，如 audio, ui, api 等
+- **subject**: 提交主题，简明扼要地描述变更
+
+示例:
+
+```
+feat(audio): 实现 AB 循环功能
+fix(api): 修复音频流传输中断问题
+docs(readme): 更新安装指南
+style(ui): 改进播放器控件样式
+refactor(waveform): 重构波形渲染算法提高性能
+```
+
+## 文档规范
+
+- 所有 API 函数和组件必须有文档
+- README 文件应包含项目概述、安装说明和基本用法
+- 复杂功能应有单独的文档说明
+- 使用 Markdown 格式编写文档
+
+```markdown
+# 组件名称
+
+简短描述组件的用途和功能。
+
+## 属性
+
+| 属性名    | 类型     | 默认值   | 描述                |
+|-----------|----------|----------|-------------------|
+| prop1     | string   | ''       | 属性1的详细描述     |
+| prop2     | number   | 0        | 属性2的详细描述     |
+| onEvent   | function | undefined| 事件处理函数描述    |
+
+## 使用示例
+
+```tsx
+<Component 
+  prop1="value" 
+  prop2={42} 
+  onEvent={(value) => console.log(value)} 
+/>
+```
+
+## 注意事项
+
+使用此组件时需注意的事项。
+```

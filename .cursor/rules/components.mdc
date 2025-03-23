@@ -1,0 +1,902 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ ---
+description: 前端组件设计和使用规范
+globs: "**/*.{jsx,tsx}"
+alwaysApply: true
+---
+
+# 前端组件设计规范
+
+本文档详细说明前端组件设计和开发规范，所有组件必须遵循这些规范以确保一致性和可维护性。
+
+## 组件分类
+
+### 1. 页面组件 (Page Components)
+
+- 位于 `app` 目录下
+- 对应特定路由
+- 负责组合其他组件形成完整页面
+- 处理页面级数据获取和状态管理
+
+```tsx
+// app/courses/[courseId]/page.tsx
+export default async function CoursePage({
+  params,
+}: {
+  params: { courseId: string }
+}) {
+  // 获取课程数据
+  const courseData = await getCourseById(params.courseId);
+  
+  return (
+    <main className="container mx-auto py-8">
+      <CourseHeader course={courseData} />
+      <UnitSelector courseId={params.courseId} units={courseData.units} />
+      <AudioPlayerSection courseId={params.courseId} />
+    </main>
+  );
+}
+```
+
+### 2. 布局组件 (Layout Components)
+
+- 位于 `app` 目录下
+- 为多个页面提供共享布局
+- 包含导航、页眉、页脚等共享元素
+- 处理布局级状态管理
+
+```tsx
+// app/courses/layout.tsx
+export default function CourseLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <CourseNavbar />
+      <div className="course-content">{children}</div>
+      <CourseFooter />
+    </div>
+  );
+}
+```
+
+### 3. 功能组件 (Feature Components)
+
+- 位于 `components` 目录下
+- 实现特定功能逻辑
+- 可能包含多个UI组件
+- 管理自身的状态和行为
+
+```tsx
+// components/audio/AudioPlayer.tsx
+"use client";
+import { useRef, useState, useEffect } from 'react';
+import Controls from './Controls';
+import Waveform from './Waveform';
+import TrackInfo from './TrackInfo';
+
+export default function AudioPlayer({ trackId }: { trackId: string }) {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  
+  // 播放控制逻辑
+  const togglePlay = () => {
+    if (isPlaying) {
+      audioRef.current?.pause();
+    } else {
+      audioRef.current?.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+  
+  // 更多播放器逻辑...
+  
+  return (
+    <div className="audio-player">
+      <TrackInfo trackId={trackId} />
+      <Waveform audioRef={audioRef} currentTime={currentTime} />
+      <Controls 
+        isPlaying={isPlaying} 
+        onTogglePlay={togglePlay}
+        // 其他控制属性...
+      />
+      <audio 
+        ref={audioRef}
+        src={`/api/audio/${trackId}`}
+        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime || 0)}
+        onEnded={() => setIsPlaying(false)}
+      />
+    </div>
+  );
+}
+```
+
+### 4. UI组件 (UI Components)
+
+- 位于 `components/ui` 目录下
+- 纯展示型组件，无业务逻辑
+- 高度可重用
+- 接受props控制外观和行为
+
+```tsx
+// components/ui/Button.tsx
+interface ButtonProps {
+  variant?: 'primary' | 'secondary' | 'outline';
+  size?: 'sm' | 'md' | 'lg';
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  className?: string;
+}
+
+export default function Button({
+  variant = 'primary',
+  size = 'md',
+  children,
+  onClick,
+  disabled = false,
+  className = '',
+}: ButtonProps) {
+  const baseStyles = "rounded font-medium transition-colors focus:outline-none focus:ring-2";
+  
+  const variantStyles = {
+    primary: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500",
+    secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300 focus:ring-gray-400",
+    outline: "border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-400"
+  };
+  
+  const sizeStyles = {
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-4 py-2 text-base",
+    lg: "px-6 py-3 text-lg"
+  };
+  
+  return (
+    <button
+      className={`${baseStyles} ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+}
+```
+
+### 5. 钩子 (Hooks)
+
+- 位于 `lib/hooks` 目录下
+- 封装可重用的逻辑
+- 遵循 React Hooks 规则
+- 具有明确的职责和返回值
+
+```tsx
+// lib/hooks/useAudioContext.ts
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+interface UseAudioContextOptions {
+  onContextCreated?: (context: AudioContext) => void;
+}
+
+export default function useAudioContext(options: UseAudioContextOptions = {}) {
+  const contextRef = useRef<AudioContext | null>(null);
+  const [isReady, setIsReady] = useState(false);
+  
+  const initContext = useCallback(() => {
+    if (contextRef.current) return;
+    
+    try {
+      const newContext = new AudioContext();
+      contextRef.current = newContext;
+      setIsReady(true);
+      options.onContextCreated?.(newContext);
+    } catch (error) {
+      console.error("Failed to create AudioContext:", error);
+    }
+  }, [options]);
+  
+  useEffect(() => {
+    // 清理函数
+    return () => {
+      if (contextRef.current?.state !== 'closed') {
+        contextRef.current?.close();
+      }
+    };
+  }, []);
+  
+  return {
+    audioContext: contextRef.current,
+    isReady,
+    initContext,
+  };
+}
+```
+
+## 组件设计原则
+
+### 1. 关注点分离
+
+- 服务器组件处理数据获取
+- 客户端组件处理交互逻辑
+- UI组件负责展示
+
+```tsx
+// 服务器组件获取数据
+// app/tracks/page.tsx
+export default async function TracksPage() {
+  const tracks = await getTracks();
+  return <TrackList initialTracks={tracks} />;
+}
+
+// 客户端组件处理交互
+// components/tracks/TrackList.tsx
+"use client";
+import { useState } from 'react';
+import TrackItem from './TrackItem';
+
+export default function TrackList({ initialTracks }) {
+  const [tracks, setTracks] = useState(initialTracks);
+  const [filter, setFilter] = useState('');
+  
+  const filteredTracks = tracks.filter(track => 
+    track.title.toLowerCase().includes(filter.toLowerCase())
+  );
+  
+  return (
+    <div>
+      <input 
+        type="text" 
+        value={filter} 
+        onChange={e => setFilter(e.target.value)} 
+        placeholder="搜索音轨..." 
+      />
+      <div className="tracks-grid">
+        {filteredTracks.map(track => (
+          <TrackItem key={track.id} track={track} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// UI组件负责展示
+// components/tracks/TrackItem.tsx
+export default function TrackItem({ track }) {
+  return (
+    <div className="track-item">
+      <h3>{track.title}</h3>
+      <p>{track.artist}</p>
+      <span>{formatDuration(track.duration)}</span>
+    </div>
+  );
+}
+```
+
+### 2. 自包含组件
+
+- 组件应该尽可能独立
+- 必要的依赖通过props传入
+- 避免直接依赖全局状态
+
+```tsx
+// 不好的写法 - 直接依赖全局状态
+function BadTrackControls() {
+  const globalState = useGlobalState();
+  
+  return (
+    <div>
+      <button onClick={() => globalState.playTrack()}>
+        {globalState.isPlaying ? '暂停' : '播放'}
+      </button>
+    </div>
+  );
+}
+
+// 好的写法 - 通过props接收依赖
+function GoodTrackControls({ isPlaying, onPlay, onPause }) {
+  return (
+    <div>
+      <button onClick={isPlaying ? onPause : onPlay}>
+        {isPlaying ? '暂停' : '播放'}
+      </button>
+    </div>
+  );
+}
+```
+
+### 3. 渐进增强
+
+- 优先考虑基本功能，然后添加高级功能
+- 确保在有限支持的环境中仍能工作
+- 使用特性检测而不是浏览器检测
+
+```tsx
+function WaveformVisualizer({ audioData }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // 基本波形绘制
+    drawBasicWaveform(ctx, audioData);
+    
+    // 特性检测并增强
+    if (window.OffscreenCanvas) {
+      // 使用 OffscreenCanvas 进行高性能渲染
+      enhanceWithOffscreenCanvas(canvas, audioData);
+    }
+  }, [audioData]);
+  
+  return <canvas ref={canvasRef} className="waveform" />;
+}
+```
+
+## 音频组件特定规范
+
+### 1. 音频播放器组件
+
+核心组件 `AudioPlayer` 必须包含以下功能：
+
+- 播放/暂停控制
+- 音量控制
+- 进度显示和控制
+- 速度调整
+- AB循环支持
+- 书签支持
+- 波形可视化
+
+```tsx
+// components/audio/AudioPlayer.tsx
+"use client";
+import { useState, useRef, useEffect } from 'react';
+import WaveformVisualizer from './WaveformVisualizer';
+import PlaybackControls from './PlaybackControls';
+import VolumeControl from './VolumeControl';
+import ABLoopControl from './ABLoopControl';
+import BookmarkList from './BookmarkList';
+import useAudioProcessor from '@/lib/hooks/useAudioProcessor';
+
+export default function AudioPlayer({ trackId, trackUrl }) {
+  // 音频元素引用
+  const audioRef = useRef<HTMLAudioElement>(null);
+  
+  // 播放状态
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  
+  // AB循环区域
+  const [loopRegion, setLoopRegion] = useState<{start: number, end: number} | null>(null);
+  
+  // 书签
+  const [bookmarks, setBookmarks] = useState<Array<{id: string, time: number, label: string}>>([]);
+  
+  // 音频处理器
+  const { 
+    audioData,
+    waveformData,
+    processAudio
+  } = useAudioProcessor();
+  
+  // 加载音频
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    const loadAudio = async () => {
+      try {
+        // 设置音频元素属性
+        audioRef.current.src = trackUrl;
+        audioRef.current.load();
+        
+        // 等待元数据加载
+        await new Promise(resolve => {
+          audioRef.current!.onloadedmetadata = resolve;
+        });
+        
+        setDuration(audioRef.current.duration);
+        
+        // 加载音频数据进行处理
+        const audioBuffer = await fetchAudioBuffer(trackUrl);
+        processAudio(audioBuffer);
+      } catch (error) {
+        console.error("Failed to load audio:", error);
+      }
+    };
+    
+    loadAudio();
+  }, [trackUrl, processAudio]);
+  
+  // 处理时间更新
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    const handleTimeUpdate = () => {
+      setCurrentTime(audioRef.current!.currentTime);
+      
+      // 处理AB循环
+      if (loopRegion && audioRef.current!.currentTime >= loopRegion.end) {
+        audioRef.current!.currentTime = loopRegion.start;
+      }
+    };
+    
+    audioRef.current.addEventListener('timeupdate', handleTimeUpdate);
+    return () => audioRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
+  }, [loopRegion]);
+  
+  // 播放控制
+  const togglePlay = () => {
+    if (!audioRef.current) return;
+    
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    
+    setIsPlaying(!isPlaying);
+  };
+  
+  // 设置音量
+  const handleVolumeChange = (newVolume: number) => {
+    if (!audioRef.current) return;
+    
+    audioRef.current.volume = newVolume;
+    setVolume(newVolume);
+  };
+  
+  // 设置播放速度
+  const handlePlaybackRateChange = (newRate: number) => {
+    if (!audioRef.current) return;
+    
+    audioRef.current.playbackRate = newRate;
+    setPlaybackRate(newRate);
+  };
+  
+  // 设置播放进度
+  const handleSeek = (time: number) => {
+    if (!audioRef.current) return;
+    
+    audioRef.current.currentTime = time;
+    setCurrentTime(time);
+  };
+  
+  // 添加书签
+  const addBookmark = (time: number, label: string) => {
+    const newBookmark = {
+      id: `bookmark-${Date.now()}`,
+      time,
+      label
+    };
+    
+    setBookmarks([...bookmarks, newBookmark]);
+  };
+  
+  // 设置AB循环区域
+  const setLoop = (start: number, end: number) => {
+    setLoopRegion({ start, end });
+  };
+  
+  return (
+    <div className="audio-player">
+      <audio
+        ref={audioRef}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+      />
+      
+      <WaveformVisualizer
+        waveformData={waveformData}
+        currentTime={currentTime}
+        duration={duration}
+        loopRegion={loopRegion}
+        bookmarks={bookmarks}
+        onSeek={handleSeek}
+        onAddBookmark={addBookmark}
+        onSetLoop={setLoop}
+      />
+      
+      <div className="controls-container">
+        <PlaybackControls
+          isPlaying={isPlaying}
+          onTogglePlay={togglePlay}
+          currentTime={currentTime}
+          duration={duration}
+          playbackRate={playbackRate}
+          onPlaybackRateChange={handlePlaybackRateChange}
+          onSeek={handleSeek}
+        />
+        
+        <VolumeControl
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+        />
+      </div>
+      
+      <ABLoopControl
+        loopRegion={loopRegion}
+        duration={duration}
+        onSetLoop={setLoop}
+        onClearLoop={() => setLoopRegion(null)}
+      />
+      
+      <BookmarkList
+        bookmarks={bookmarks}
+        onBookmarkClick={(time) => handleSeek(time)}
+        onRemoveBookmark={(id) => setBookmarks(bookmarks.filter(b => b.id !== id))}
+      />
+    </div>
+  );
+}
+```
+
+### 2. 波形可视化组件
+
+波形可视化组件必须满足以下要求：
+
+- 高性能渲染
+- 支持拖动导航
+- 显示当前播放位置
+- 可视化AB循环区域
+- 显示书签位置
+
+```tsx
+// components/audio/WaveformVisualizer.tsx
+"use client";
+import { useRef, useEffect, useState } from 'react';
+
+interface WaveformVisualizerProps {
+  waveformData: Float32Array;
+  currentTime: number;
+  duration: number;
+  loopRegion: { start: number; end: number } | null;
+  bookmarks: Array<{ id: string; time: number; label: string }>;
+  onSeek: (time: number) => void;
+  onAddBookmark: (time: number, label: string) => void;
+  onSetLoop: (start: number, end: number) => void;
+}
+
+export default function WaveformVisualizer({
+  waveformData,
+  currentTime,
+  duration,
+  loopRegion,
+  bookmarks,
+  onSeek,
+  onAddBookmark,
+  onSetLoop
+}: WaveformVisualizerProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [loopStart, setLoopStart] = useState<number | null>(null);
+
+  // 渲染波形
+  useEffect(() => {
+    if (!canvasRef.current || !waveformData || waveformData.length === 0) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // 设置画布尺寸
+    const { width, height } = canvas.getBoundingClientRect();
+    canvas.width = width;
+    canvas.height = height;
+
+    // 清除画布
+    ctx.clearRect(0, 0, width, height);
+
+    // 设置波形样式
+    ctx.fillStyle = '#3b82f6';
+
+    // 计算每个数据点的宽度
+    const barWidth = width / waveformData.length;
+
+    // 绘制波形
+    for (let i = 0; i < waveformData.length; i++) {
+      const x = i * barWidth;
+      const barHeight = waveformData[i] * height;
+      const y = (height - barHeight) / 2;
+      
+      ctx.fillRect(x, y, barWidth - 1, barHeight);
+    }
+
+    // 绘制当前播放位置
+    if (duration > 0) {
+      const positionX = (currentTime / duration) * width;
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(positionX - 1, 0, 2, height);
+    }
+
+    // 绘制AB循环区域
+    if (loopRegion) {
+      const startX = (loopRegion.start / duration) * width;
+      const endX = (loopRegion.end / duration) * width;
+      
+      ctx.fillStyle = 'rgba(59, 130, 246, 0.3)';
+      ctx.fillRect(startX, 0, endX - startX, height);
+    }
+
+    // 绘制书签
+    bookmarks.forEach(bookmark => {
+      const bookmarkX = (bookmark.time / duration) * width;
+      
+      // 绘制书签标记
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.moveTo(bookmarkX, 0);
+      ctx.lineTo(bookmarkX - 5, 10);
+      ctx.lineTo(bookmarkX + 5, 10);
+      ctx.closePath();
+      ctx.fill();
+    });
+  }, [waveformData, currentTime, duration, loopRegion, bookmarks]);
+
+  // 处理鼠标事件
+  useEffect(() => {
+    if (!canvasRef.current || !containerRef.current) return;
+
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+
+    // 计算时间位置
+    const getTimeFromPosition = (x: number) => {
+      const { width } = canvas.getBoundingClientRect();
+      const { left } = container.getBoundingClientRect();
+      const position = x - left;
+      const percentage = Math.max(0, Math.min(1, position / width));
+      return percentage * duration;
+    };
+
+    // 处理鼠标按下
+    const handleMouseDown = (e: MouseEvent) => {
+      // Alt键按下时设置循环区域
+      if (e.altKey) {
+        const time = getTimeFromPosition(e.clientX);
+        setLoopStart(time);
+      } else {
+        // 否则直接跳转
+        const time = getTimeFromPosition(e.clientX);
+        onSeek(time);
+        setIsDragging(true);
+      }
+    };
+
+    // 处理鼠标移动
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        const time = getTimeFromPosition(e.clientX);
+        onSeek(time);
+      }
+    };
+
+    // 处理鼠标释放
+    const handleMouseUp = (e: MouseEvent) => {
+      if (loopStart !== null) {
+        const endTime = getTimeFromPosition(e.clientX);
+        // 确保开始时间小于结束时间
+        const start = Math.min(loopStart, endTime);
+        const end = Math.max(loopStart, endTime);
+        
+        if (end - start > 0.5) { // 至少0.5秒的循环区域
+          onSetLoop(start, end);
+        }
+        setLoopStart(null);
+      }
+      setIsDragging(false);
+    };
+
+    // 处理双击添加书签
+    const handleDoubleClick = (e: MouseEvent) => {
+      const time = getTimeFromPosition(e.clientX);
+      const label = prompt('输入书签标签:') || `${formatTime(time)}`;
+      onAddBookmark(time, label);
+    };
+
+    // 添加事件监听
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('dblclick', handleDoubleClick);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    // 清理事件监听
+    return () => {
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('dblclick', handleDoubleClick);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [waveformData, duration, isDragging, loopStart, onSeek, onAddBookmark, onSetLoop]);
+
+  // 格式化时间函数
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div 
+      ref={containerRef} 
+      className="waveform-container relative w-full h-32 bg-gray-100 rounded cursor-pointer"
+    >
+      <canvas 
+        ref={canvasRef} 
+        className="w-full h-full"
+      />
+      
+      {/* 时间显示 */}
+      <div className="absolute bottom-2 right-2 text-xs bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+        {formatTime(currentTime)} / {formatTime(duration)}
+      </div>
+      
+      {/* Alt键提示 */}
+      <div className="absolute top-2 right-2 text-xs bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+        按住Alt并拖动设置AB循环区域
+      </div>
+    </div>
+  );
+}
+```
+
+## 性能优化指南
+
+### 1. 减少重渲染
+
+- 使用 `React.memo` 包装组件
+- 使用回调函数 `useCallback` 和 `useMemo`
+- 将状态分解为多个独立部分
+
+```tsx
+// 使用 React.memo 优化渲染
+const TrackItem = React.memo(function TrackItem({ track, onSelect }) {
+  return (
+    <div onClick={() => onSelect(track.id)}>
+      {track.title}
+    </div>
+  );
+});
+
+// 使用 useCallback 优化回调函数
+function TrackList({ tracks }) {
+  const [selectedId, setSelectedId] = useState(null);
+  
+  // 使用 useCallback 避免每次渲染创建新函数
+  const handleSelect = useCallback((id) => {
+    setSelectedId(id);
+  }, []);
+  
+  return (
+    <div>
+      {tracks.map(track => (
+        <TrackItem 
+          key={track.id} 
+          track={track} 
+          onSelect={handleSelect} 
+        />
+      ))}
+    </div>
+  );
+}
+```
+
+### 2. 高效加载音频
+
+- 使用范围请求分段加载音频
+- 实现渐进式缓冲
+- 预加载可能的下一个音轨
+
+```tsx
+async function loadAudioRange(url, start, end) {
+  const response = await fetch(url, {
+    headers: {
+      Range: `bytes=${start}-${end}`
+    }
+  });
+  
+  return response.arrayBuffer();
+}
+
+function useProgressiveAudio(url) {
+  const [buffer, setBuffer] = useState(null);
+  const [loadedRanges, setLoadedRanges] = useState([]);
+  
+  useEffect(() => {
+    // 初始加载前30秒
+    const loadInitialSegment = async () => {
+      const initialChunk = await loadAudioRange(url, 0, 1024 * 1024); // 首1MB
+      setBuffer(initialChunk);
+      setLoadedRanges([{ start: 0, end: 1024 * 1024 }]);
+    };
+    
+    loadInitialSegment();
+  }, [url]);
+  
+  // 加载更多音频数据的函数
+  const loadMore = useCallback(async () => {
+    // 实现加载下一段逻辑
+  }, [url, loadedRanges]);
+  
+  return { buffer, loadMore, loadedRanges };
+}
+```
+
+### 3. 优化波形绘制
+
+- 使用 `requestAnimationFrame` 进行绘制
+- 使用 `OffscreenCanvas` 进行离屏渲染
+- 适当降低分辨率减轻计算负担
+
+```tsx
+function useOptimizedWaveform(audioData, width) {
+  const [waveformData, setWaveformData] = useState(null);
+  
+  useEffect(() => {
+    if (!audioData || !width) return;
+    
+    // 使用Web Worker进行波形计算
+    const worker = new Worker(new URL('../workers/waveform.worker.js', import.meta.url));
+    
+    worker.onmessage = (e) => {
+      setWaveformData(e.data.waveform);
+    };
+    
+    worker.postMessage({
+      audioData,
+      width,
+      downsampleFactor: width > 1000 ? 4 : 2 // 根据宽度调整采样率
+    });
+    
+    return () => worker.terminate();
+  }, [audioData, width]);
+  
+  return waveformData;
+}
+```
+
+## 辅助功能规范
+
+所有组件必须实现以下辅助功能：
+
+1. 键盘导航支持
+2. 正确的ARIA属性
+3. 足够的颜色对比度
+4. 适当的文本替代
+
+```tsx
+// 辅助功能示例
+function AccessibleAudioControls({ isPlaying, onTogglePlay, onStop }) {
+  return (
+    <div role="group" aria-label="音频控制">
+      <button 
+        onClick={onTogglePlay}
+        aria-label={isPlaying ? '暂停' : '播放'}
+        aria-pressed={isPlaying}
+      >
+        {isPlaying ? '暂停' : '播放'}
+      </button>
+      
+      <button 
+        onClick={onStop}
+        aria-label="停止"
+      >
+        停止
+      </button>
+    </div>
+  );
+}
+```

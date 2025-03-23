@@ -1,14 +1,48 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
+---
+---
+description: 语言学习音频播放器项目概述
+globs: 
+alwaysApply: true
 ---
 
-# Your rule content
+# 语言学习音频播放器
 
-- tech stack [tech.md](mdc:.cursor/rules/tech.md)
-- [app.md](mdc:.cursor/rules/app.md)
-- app 参考界面 [preview.webp](mdc:.cursor/rules/preview.webp)
-- MDN Web Audio API example: under webaudio-examples folder
-- Web Audio API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API
-- Using the Web Audio API: https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Using_Web_Audio_API
+这是一个专为教育场景设计的音频播放系统，支持系统预设内容和用户自定义音频。系统采用现代技术栈构建，实现防下载的安全播放、高级音频处理功能和直观的用户界面。
+
+## 项目目录结构
+
+项目使用以下主要目录：
+- `web-client` - 前端项目代码（Next.js 15 App Router）
+- `backend` - 后端服务代码（Golang Gin框架）
+- `webaudio-examples` - Web Audio API 示例代码（以Git submodule方式引入）
+
+## 项目规则和规范
+
+- [技术栈](mdc:.cursor/rules/tech-stack.mdc) - 项目使用的技术栈和最佳实践
+- [架构](mdc:.cursor/rules/architecture.mdc) - 系统架构和主要组件
+- [组件设计](mdc:.cursor/rules/components.mdc) - 前端组件设计和使用规范
+- [音频处理](mdc:.cursor/rules/audio-processing.mdc) - 音频处理相关的规范和API
+- [安全机制](mdc:.cursor/rules/security.mdc) - 系统安全机制和实现
+- [代码风格](mdc:.cursor/rules/code-style.mdc) - 编码规范和风格指南
+- [Git提交规范](mdc:.cursor/rules/git-commits.mdc) - Git提交格式和自动化规则
+
+## 参考资源
+
+- [预览界面](mdc:.cursor/rules/preview.webp) - 应用参考界面
+- MDN Web Audio API: [文档](mdc:https:/developer.mozilla.org/zh-CN/docs/Web/API/Web_Audio_API)
+- Web Audio API 使用指南: [教程](mdc:https:/developer.mozilla.org/zh-CN/docs/Web/API/Web_Audio_API/Using_Web_Audio_API)
+- Web Audio API 示例: `webaudio-examples` 目录（由MDN提供的官方示例，作为Git submodule引入）
+  - 初始化: `git submodule update --init --recursive`
+  - 更新: `git submodule update --remote`
+
+## 重要提示
+
+- 所有音频相关逻辑必须使用 Web Audio API 实现
+- 高性能处理使用 Rust + WebAssembly
+- 使用 Next.js App Router 架构
+- 前后端分离设计，后端使用 Golang
+- 音频播放安全性为核心设计要点

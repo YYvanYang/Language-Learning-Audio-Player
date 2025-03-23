@@ -1,0 +1,946 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ ---
+description: 系统安全机制和实现
+globs: 
+alwaysApply: true
+---
+
+# 安全机制规范
+
+本文档详细说明语言学习音频播放器系统的安全机制规范和实现指南。确保系统安全、防止音频内容未授权访问是核心设计要点。
+
+## 音频内容保护
+
+系统使用多层安全机制保护音频内容，防止未授权下载和使用：
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│                 │     │                 │     │                 │
+│  认证和授权     │────►│  令牌验证       │────►│  流式传输       │
+│                 │     │                 │     │                 │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+```
+
+### 1. 令牌验证机制
+
+所有音频请求必须使用加密令牌：
+
+```typescript
+// 前端 - 获取音频访问令牌
+async function getAudioToken(trackId: string): Promise<string> {
+  const response = await fetch(`/api/audio/token/${trackId}`, {
+    method: 'GET',
+    credentials: 'include', // 确保发送 cookies
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error('Failed to get audio token');
+  }
+  
+  const data = await response.json();
+  return data.token;
+}
+
+// 前端 - 使用令牌请求音频
+function createSecureAudioUrl(trackId: string, token: string): string {
+  return `/api/audio/stream/${trackId}?token=${token}`;
+}
+```
+
+#### 令牌结构和生成
+
+```go
+// Golang 后端 - 令牌结构
+type AudioAccessToken struct {
+    UserID    string    `json:"uid"`
+    TrackID   string    `json:"tid"`
+    Timestamp time.Time `json:"ts"`
+    ExpiresAt time.Time `json:"exp"`
+    Nonce     string    `json:"nonce"`
+}
+
+// Golang 后端 - 生成令牌
+func GenerateAudioToken(userID, trackID string, secretKey string) (string, error) {
+    // 创建令牌数据
+    token := AudioAccessToken{
+        UserID:    userID,
+        TrackID:   trackID,
+        Timestamp: time.Now(),
+        ExpiresAt: time.Now().Add(5 * time.Minute), // 5分钟有效期
+        Nonce:     generateRandomString(16),        // 随机盐
+    }
+    
+    // 序列化为JSON
+    jsonToken, err := json.Marshal(token)
+    if (!err) {
+        return "", err
+    }
+    
+    // 加密令牌
+    encryptedToken, err := encryptWithAES(jsonToken, secretKey)
+    if (err != nil) {
+        return "", err
+    }
+    
+    // Base64编码
+    encodedToken := base64.URLEncoding.EncodeToString(encryptedToken)
+    
+    return encodedToken, nil
+}
+```
+
+#### 令牌验证
+
+```go
+// Golang 后端 - 验证令牌
+func ValidateAudioToken(encodedToken, trackID, secretKey string) (bool, error) {
+    // Base64解码
+    encryptedToken, err := base64.URLEncoding.DecodeString(encodedToken)
+    if (err != nil) {
+        return false, err
+    }
+    
+    // 解密令牌
+    jsonToken, err := decryptWithAES(encryptedToken, secretKey)
+    if (err != nil) {
+        return false, err
+    }
+    
+    // 解析为结构体
+    var token AudioAccessToken
+    err = json.Unmarshal(jsonToken, &token)
+    if (err != nil) {
+        return false, err
+    }
+    
+    // 验证令牌是否过期
+    if time.Now().After(token.ExpiresAt) {
+        return false, errors.New("token expired")
+    }
+    
+    // 验证音轨ID是否匹配
+    if token.TrackID != trackID {
+        return false, errors.New("invalid track ID")
+    }
+    
+    return true, nil
+}
+```
+
+### 2. 流式传输机制
+
+系统使用流式传输机制防止完整文件下载：
+
+```go
+// Golang 后端 - 流式传输音频
+func StreamAudioHandler(c *gin.Context) {
+    trackID := c.Param("trackId")
+    token := c.Query("token")
+    
+    // 验证令牌
+    valid, err := ValidateAudioToken(token, trackID, secretKey)
+    if !valid || err != nil {
+        c.AbortWithStatus(http.StatusUnauthorized)
+        return
+    }
+    
+    // 获取文件路径
+    filePath, err := getTrackFilePath(trackID)
+    if err != nil {
+        c.AbortWithStatus(http.StatusNotFound)
+        return
+    }
+    
+    // 获取文件信息
+    info, err := os.Stat(filePath)
+    if err != nil {
+        c.AbortWithStatus(http.StatusNotFound)
+        return
+    }
+    
+    // 打开文件
+    file, err := os.Open(filePath)
+    if err != nil {
+        c.AbortWithStatus(http.StatusInternalServerError)
+        return
+    }
+    defer file.Close()
+    
+    // 设置响应头
+    c.Header("Content-Type", getContentType(filePath))
+    c.Header("Accept-Ranges", "bytes")
+    c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+    c.Header("Pragma", "no-cache")
+    c.Header("Content-Disposition", "inline")
+    
+    // 处理范围请求
+    rangeHeader := c.Request.Header.Get("Range")
+    if rangeHeader != "" {
+        // 解析范围请求
+        ranges, err := parseRange(rangeHeader, info.Size())
+        if err != nil {
+            c.AbortWithStatus(http.StatusRequestedRangeNotSatisfiable)
+            return
+        }
+        
+        // 目前只处理单一范围
+        if len(ranges) == 1 {
+            r := ranges[0]
+            
+            // 设置分部内容头
+            c.Status(http.StatusPartialContent)
+            c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", r.Start, r.End, info.Size()))
+            c.Header("Content-Length", fmt.Sprintf("%d", r.End-r.Start+1))
+            
+            // 设置文件偏移
+            file.Seek(r.Start, 0)
+            
+            // 流式传输指定范围
+            written, err := io.CopyN(c.Writer, file, r.End-r.Start+1)
+            if err != nil && err != io.EOF {
+                c.AbortWithStatus(http.StatusInternalServerError)
+                return
+            }
+            
+            c.Status(http.StatusPartialContent)
+            return
+        }
+    }
+    
+    // 如果没有范围请求，流式传输整个文件
+    c.Header("Content-Length", fmt.Sprintf("%d", info.Size()))
+    io.Copy(c.Writer, file)
+}
+```
+
+### 3. 前端防下载保护
+
+前端实现额外的防下载保护：
+
+```typescript
+// 前端 - 防下载保护
+function setupDownloadProtection(audioElement: HTMLAudioElement) {
+  // 禁用右键菜单
+  audioElement.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    return false;
+  });
+  
+  // 监听并强制设置 crossOrigin 属性
+  Object.defineProperty(audioElement, 'crossOrigin', {
+    get: function() {
+      return this._crossOrigin;
+    },
+    set: function(value) {
+      // 只允许使用 anonymous 或 use-credentials
+      if (value === 'anonymous' || value === 'use-credentials') {
+        this._crossOrigin = value;
+      }
+    }
+  });
+  
+  // 禁止通过修改 src 属性绕过
+  const originalSrc = audioElement.src;
+  Object.defineProperty(audioElement, 'src', {
+    get: function() {
+      return originalSrc;
+    },
+    set: function(value) {
+      if (value.startsWith('/api/audio/stream/') && value.includes('token=')) {
+        this._src = value;
+      } else {
+        console.error('Invalid audio source');
+      }
+    }
+  });
+}
+```
+
+## 用户认证和授权
+
+系统使用 JWT 认证保护 API 接口：
+
+### 1. 认证中间件
+
+```go
+// Golang 后端 - JWT 认证中间件
+func AuthMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // 从 Cookie 中获取令牌
+        tokenString, err := c.Cookie("auth_token")
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+                "error": "unauthorized",
+            })
+            return
+        }
+        
+        // 验证令牌
+        claims, err := ValidateJWTToken(tokenString)
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+                "error": "invalid token",
+            })
+            return
+        }
+        
+        // 存储用户信息到上下文
+        c.Set("user_id", claims.UserID)
+        c.Set("user_role", claims.Role)
+        
+        c.Next()
+    }
+}
+
+// Golang 后端 - 验证 JWT 令牌
+func ValidateJWTToken(tokenString string) (*JWTClaims, error) {
+    // 解析令牌
+    token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+        return []byte(jwtSecretKey), nil
+    })
+    
+    if err != nil {
+        return nil, err
+    }
+    
+    // 验证并返回claims
+    if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
+        return claims, nil
+    }
+    
+    return nil, errors.New("invalid token")
+}
+```
+
+### 2. 用户登录和令牌生成
+
+```go
+// Golang 后端 - 用户登录处理
+func LoginHandler(c *gin.Context) {
+    var loginRequest LoginRequest
+    if err := c.ShouldBindJSON(&loginRequest); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+        return
+    }
+    
+    // 验证用户凭据
+    user, err := AuthenticateUser(loginRequest.Username, loginRequest.Password)
+    if err != nil {
+        c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+        return
+    }
+    
+    // 生成JWT令牌
+    token, expiresAt, err := GenerateJWTToken(user.ID, user.Role)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+        return
+    }
+    
+    // 设置Cookie
+    c.SetCookie(
+        "auth_token",      // 名称
+        token,             // 值
+        int(24*time.Hour.Seconds()), // 有效期（24小时）
+        "/",               // 路径
+        "",                // 域名
+        false,             // 仅HTTPS
+        true,              // HTTP-only
+    )
+    
+    c.JSON(http.StatusOK, gin.H{
+        "message": "Login successful",
+        "userID": user.ID,
+        "expiresAt": expiresAt,
+    })
+}
+
+// Golang 后端 - 生成JWT令牌
+func GenerateJWTToken(userID, role string) (string, int64, error) {
+    expiresAt := time.Now().Add(24 * time.Hour).Unix()
+    
+    claims := JWTClaims{
+        UserID: userID,
+        Role: role,
+        StandardClaims: jwt.StandardClaims{
+            ExpiresAt: expiresAt,
+            IssuedAt: time.Now().Unix(),
+        },
+    }
+    
+    token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+    tokenString, err := token.SignedString([]byte(jwtSecretKey))
+    
+    return tokenString, expiresAt, err
+}
+```
+
+### 3. 前端认证状态管理
+
+```typescript
+// 前端 - 认证上下文
+import { createContext, useContext, useState, useEffect } from 'react';
+
+// 认证上下文类型
+interface AuthContextType {
+  isAuthenticated: boolean;
+  userID: string | null;
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  checkAuthStatus: () => Promise<boolean>;
+}
+
+// 创建上下文
+const AuthContext = createContext<AuthContextType>({
+  isAuthenticated: false,
+  userID: null,
+  login: async () => {},
+  logout: async () => {},
+  checkAuthStatus: async () => false
+});
+
+// 认证提供器组件
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userID, setUserID] = useState<string | null>(null);
+  
+  // 检查认证状态
+  const checkAuthStatus = async () => {
+    try {
+      const response = await fetch('/api/auth/validate', {
+        method: 'GET',
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setIsAuthenticated(true);
+        setUserID(data.userID);
+        return true;
+      } else {
+        setIsAuthenticated(false);
+        setUserID(null);
+        return false;
+      }
+    } catch (error) {
+      console.error('Auth status check failed:', error);
+      setIsAuthenticated(false);
+      setUserID(null);
+      return false;
+    }
+  };
+  
+  // 登录
+  const login = async (username: string, password: string) => {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ username, password })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Login failed');
+      }
+      
+      const data = await response.json();
+      setIsAuthenticated(true);
+      setUserID(data.userID);
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
+    }
+  };
+  
+  // 注销
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      setIsAuthenticated(false);
+      setUserID(null);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+  
+  // 初始检查认证状态
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+  
+  // 提供上下文值
+  const value = {
+    isAuthenticated,
+    userID,
+    login,
+    logout,
+    checkAuthStatus
+  };
+  
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+// 使用认证的钩子
+export function useAuth() {
+  return useContext(AuthContext);
+}
+```
+
+## CORS 配置
+
+服务器实现严格的 CORS 设置防止未授权访问：
+
+```go
+// Golang 后端 - CORS 中间件
+func CORSMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        c.Writer.Header().Set("Access-Control-Allow-Origin", os.Getenv("FRONTEND_URL"))
+        c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+        c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, Authorization, Accept, Origin, Cache-Control, X-Requested-With")
+        
+        if c.Request.Method == "OPTIONS" {
+            c.AbortWithStatus(http.StatusNoContent)
+            return
+        }
+        
+        c.Next()
+    }
+}
+
+// 主应用设置
+func SetupRouter() *gin.Engine {
+    router := gin.Default()
+    
+    // 应用CORS中间件
+    router.Use(CORSMiddleware())
+    
+    // 设置路由
+    // ...
+    
+    return router
+}
+```
+
+## 防盗链保护
+
+系统实现防盗链保护，确保音频只能在授权环境中播放：
+
+```go
+// Golang 后端 - 防盗链中间件
+func ReferrerCheckMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // 获取 Referer 头
+        referer := c.Request.Header.Get("Referer")
+        
+        // 如果 Referer 不为空，验证来源
+        if referer != "" {
+            refererURL, err := url.Parse(referer)
+            if err != nil {
+                c.AbortWithStatus(http.StatusForbidden)
+                return
+            }
+            
+            // 获取允许的主机列表
+            allowedHosts := strings.Split(os.Getenv("ALLOWED_REFERERS"), ",")
+            
+            // 验证 Referer 是否在允许列表中
+            hostValid := false
+            for _, host := range allowedHosts {
+                if strings.TrimSpace(host) == refererURL.Host {
+                    hostValid = true
+                    break
+                }
+            }
+            
+            if !hostValid {
+                c.AbortWithStatus(http.StatusForbidden)
+                return
+            }
+        } else {
+            // 某些路由可能需要强制 Referer 存在
+            if c.Request.URL.Path == "/api/audio/stream/" {
+                c.AbortWithStatus(http.StatusForbidden)
+                return
+            }
+        }
+        
+        c.Next()
+    }
+}
+```
+
+## 加密工具
+
+系统使用 AES 加密保护敏感数据：
+
+```go
+// Golang 后端 - AES 加密
+func encryptWithAES(data []byte, keyString string) ([]byte, error) {
+    // 确保密钥长度为32字节（256位）
+    key := make([]byte, 32)
+    copy(key, []byte(keyString))
+    
+    // 创建加密块
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 创建 GCM 模式
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 创建随机数
+    nonce := make([]byte, gcm.NonceSize())
+    if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+        return nil, err
+    }
+    
+    // 加密
+    ciphertext := gcm.Seal(nonce, nonce, data, nil)
+    
+    return ciphertext, nil
+}
+
+// Golang 后端 - AES 解密
+func decryptWithAES(data []byte, keyString string) ([]byte, error) {
+    // 确保密钥长度为32字节（256位）
+    key := make([]byte, 32)
+    copy(key, []byte(keyString))
+    
+    // 创建加密块
+    block, err := aes.NewCipher(key)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 创建 GCM 模式
+    gcm, err := cipher.NewGCM(block)
+    if err != nil {
+        return nil, err
+    }
+    
+    // 分离 nonce 和密文
+    nonceSize := gcm.NonceSize()
+    if len(data) < nonceSize {
+        return nil, errors.New("ciphertext too short")
+    }
+    
+    nonce, ciphertext := data[:nonceSize], data[nonceSize:]
+    
+    // 解密
+    plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+    if err != nil {
+        return nil, err
+    }
+    
+    return plaintext, nil
+}
+```
+
+## 安全标头
+
+服务器发送额外的安全标头提升安全性：
+
+```go
+// Golang 后端 - 安全标头中间件
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // 设置安全标头
+        c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
+        c.Writer.Header().Set("X-Frame-Options", "DENY")
+        c.Writer.Header().Set("X-XSS-Protection", "1; mode=block")
+        c.Writer.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+        c.Writer.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self';")
+        
+        c.Next()
+    }
+}
+```
+
+## 用户权限验证
+
+系统实现细粒度权限验证，确保用户只能访问授权内容：
+
+```go
+// Golang 后端 - 检查用户是否有权访问特定课程
+func CheckCourseAccess(userID, courseID string) (bool, error) {
+    // 检查用户权限
+    hasAccess, err := userRepository.UserHasCourseAccess(userID, courseID)
+    if err != nil {
+        return false, err
+    }
+    
+    return hasAccess, nil
+}
+
+// Golang 后端 - 课程访问中间件
+func CourseAccessMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // 获取课程ID和用户ID
+        courseID := c.Param("courseId")
+        userID, exists := c.Get("user_id")
+        
+        if !exists {
+            c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+                "error": "unauthorized",
+            })
+            return
+        }
+        
+        // 检查访问权限
+        hasAccess, err := CheckCourseAccess(userID.(string), courseID)
+        if err != nil {
+            c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+                "error": "failed to check access",
+            })
+            return
+        }
+        
+        if !hasAccess {
+            c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+                "error": "access denied",
+            })
+            return
+        }
+        
+        c.Next()
+    }
+}
+```
+
+## 安全日志和监控
+
+系统实现安全事件记录和监控：
+
+```go
+// Golang 后端 - 安全日志中间件
+func SecurityLoggingMiddleware() gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // 记录请求开始时间
+        startTime := time.Now()
+        
+        // 处理请求
+        c.Next()
+        
+        // 收集安全相关信息
+        status := c.Writer.Status()
+        path := c.Request.URL.Path
+        method := c.Request.Method
+        ip := c.ClientIP()
+        userAgent := c.Request.UserAgent()
+        referer := c.Request.Referer()
+        
+        // 提取用户ID（如果已认证）
+        userID, _ := c.Get("user_id")
+        
+        // 计算请求处理时间
+        latency := time.Since(startTime)
+        
+        // 记录日志
+        if status >= 400 {
+            // 记录可疑请求
+            logger.Warnf(
+                "SECURITY_EVENT: status=%d method=%s path=%s ip=%s user_agent=%s referer=%s user_id=%v latency=%s",
+                status, method, path, ip, userAgent, referer, userID, latency,
+            )
+            
+            // 对于严重错误，记录详细信息
+            if status >= 500 {
+                errors := c.Errors.ByType(gin.ErrorTypePrivate)
+                if len(errors) > 0 {
+                    logger.Errorf("SECURITY_ERROR: %v", errors)
+                }
+            }
+        }
+        
+        // 记录敏感操作
+        if strings.Contains(path, "/api/auth/") || strings.Contains(path, "/api/admin/") {
+            logger.Infof(
+                "SECURITY_AUDIT: status=%d method=%s path=%s ip=%s user_id=%v",
+                status, method, path, ip, userID,
+            )
+        }
+    }
+}
+```
+
+## 密码安全
+
+系统使用安全的密码处理：
+
+```go
+// Golang 后端 - 密码哈希
+func HashPassword(password string) (string, error) {
+    hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+    if err != nil {
+        return "", err
+    }
+    
+    return string(hashedPassword), nil
+}
+
+// Golang 后端 - 验证密码
+func VerifyPassword(hashedPassword, password string) bool {
+    err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+    return err == nil
+}
+
+// Golang 后端 - 更新密码
+func UpdateUserPassword(userID, currentPassword, newPassword string) error {
+    // 获取用户
+    user, err := userRepository.GetUserByID(userID)
+    if err != nil {
+        return errors.New("user not found")
+    }
+    
+    // 验证当前密码
+    if !VerifyPassword(user.PasswordHash, currentPassword) {
+        return errors.New("current password is incorrect")
+    }
+    
+    // 验证新密码强度
+    if !isStrongPassword(newPassword) {
+        return errors.New("new password does not meet requirements")
+    }
+    
+    // 哈希新密码
+    newPasswordHash, err := HashPassword(newPassword)
+    if err != nil {
+        return errors.New("failed to hash password")
+    }
+    
+    // 更新密码
+    return userRepository.UpdateUserPassword(userID, newPasswordHash)
+}
+
+// Golang 后端 - 检查密码强度
+func isStrongPassword(password string) bool {
+    // 至少8个字符
+    if len(password) < 8 {
+        return false
+    }
+    
+    // 检查是否包含数字
+    hasNumber := false
+    // 检查是否包含大写字母
+    hasUpper := false
+    // 检查是否包含小写字母
+    hasLower := false
+    // 检查是否包含特殊字符
+    hasSpecial := false
+    
+    for _, char := range password {
+        if unicode.IsDigit(char) {
+            hasNumber = true
+        } else if unicode.IsUpper(char) {
+            hasUpper = true
+        } else if unicode.IsLower(char) {
+            hasLower = true
+        } else if unicode.IsPunct(char) || unicode.IsSymbol(char) {
+            hasSpecial = true
+        }
+    }
+    
+    // 必须满足至少3个条件
+    return (hasNumber && hasUpper && hasLower) || 
+           (hasNumber && hasUpper && hasSpecial) || 
+           (hasNumber && hasLower && hasSpecial) || 
+           (hasUpper && hasLower && hasSpecial)
+}
+```
+
+## 前端安全最佳实践
+
+前端实现以下安全最佳实践：
+
+```typescript
+// 前端 - 安全工具库
+export const SecurityUtils = {
+  // 防止XSS攻击的HTML转义
+  escapeHTML: (html: string): string => {
+    return html
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  },
+  
+  // 安全地渲染用户输入的内容
+  safeInnerHTML: (element: HTMLElement, html: string) => {
+    // 首先转义HTML
+    const safeHTML = SecurityUtils.escapeHTML(html);
+    element.innerHTML = safeHTML;
+  },
+  
+  // 防止CSRF的安全fetch包装
+  safeFetch: async (url: string, options: RequestInit = {}) => {
+    // 确保包含credentials
+    const secureOptions: RequestInit = {
+      ...options,
+      credentials: 'include',
+      headers: {
+        ...options.headers,
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    };
+    
+    return fetch(url, secureOptions);
+  },
+  
+  // 安全地存储敏感数据
+  secureStorage: {
+    // 使用会话存储（浏览器关闭时清除）
+    setSessionItem: (key: string, value: any) => {
+      try {
+        sessionStorage.setItem(key, JSON.stringify(value));
+      } catch (error) {
+        console.error('Failed to store data:', error);
+      }
+    },
+    
+    // 获取会话存储数据
+    getSessionItem: (key: string) => {
+      try {
+        const item = sessionStorage.getItem(key);
+        return item ? JSON.parse(item) : null;
+      } catch (error) {
+        console.error('Failed to retrieve data:', error);
+        return null;
+      }
+    },
+    
+    // 清除会话存储数据
+    clearSessionItem: (key: string) => {
+      try {
+        sessionStorage.removeItem(key);
+      } catch (error) {
+        console.error('Failed to clear data:', error);
+      }
+    }
+  }
+};
+```

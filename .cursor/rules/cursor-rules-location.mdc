@@ -1,0 +1,78 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: Cursor 规则文件位置
+globs: *.mdc
+alwaysApply: true
+---
+
+# Cursor 规则文件位置
+
+规定 Cursor 规则文件的存放位置和组织方式。
+
+<rule>
+name: cursor_rules_location
+description: 规定 Cursor 规则文件的正确目录位置
+filters:
+  # 匹配所有 .mdc 文件
+  - type: file_extension
+    pattern: "\\.mdc$"
+  # 匹配看起来像 Cursor 规则的文件
+  - type: content
+    pattern: "(?s)<rule>.*?</rule>"
+  # 匹配文件创建事件
+  - type: event
+    pattern: "file_create"
+
+actions:
+  - type: reject
+    conditions:
+      - pattern: "^(?!\\.\\/\\.cursor\\/rules\\/.*\\.mdc$)"
+        message: "Cursor 规则文件 (.mdc) 必须放在 .cursor/rules 目录中"
+
+  - type: suggest
+    message: |
+      创建 Cursor 规则时：
+
+      1. 所有规则文件必须放在 PROJECT_ROOT/.cursor/rules/ 目录:
+         ```
+         .cursor/rules/
+         ├── project.mdc
+         ├── tech.mdc
+         ├── components.mdc
+         └── ...
+         ```
+
+      2. 遵循命名约定：
+         - 使用 kebab-case 格式命名文件
+         - 始终使用 .mdc 扩展名
+         - 文件名应描述规则的用途
+
+      3. 目录结构：
+         ```
+         PROJECT_ROOT/
+         ├── .cursor/
+         │   └── rules/
+         │       ├── project.mdc
+         │       └── ...
+         └── ...
+         ```
+
+examples:
+  - input: |
+      # 错误：规则文件位置不正确
+      rules/my-rule.mdc
+      my-rule.mdc
+      .rules/my-rule.mdc
+
+      # 正确：规则文件位置正确
+      .cursor/rules/my-rule.mdc
+    output: "正确放置的 Cursor 规则文件"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>

@@ -1,0 +1,235 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ ---
+description: 项目技术栈和最佳实践
+globs: "**/*.{js,jsx,ts,tsx}"
+alwaysApply: true
+---
+
+# 技术栈规范
+
+本项目采用现代前端技术栈，要求严格遵循以下规范。
+
+## 前端技术
+
+- **框架**: Next.js 15 (App Router)
+- **UI库**: React 19
+- **样式**: Tailwind CSS 4.0
+- **高性能音频处理**: Rust + WebAssembly
+- **状态管理**: React Context API + Hooks
+- **HTTP客户端**: 原生Fetch API + useSWR
+
+## 后端技术
+
+- **语言**: Golang
+- **Web框架**: Gin
+- **音频处理**: FFmpeg
+- **存储**: 文件系统
+- **认证**: JWT + Cookie
+- **API安全**: 加密令牌 + CORS
+
+## Next.js 和 React 最佳实践
+
+### 服务器组件和客户端组件
+
+```tsx
+// 1. 默认使用 Server Components
+export default function ServerComponent() {
+  return <div>服务器组件</div>
+}
+
+// 2. 仅在需要交互时使用 Client Component
+"use client";
+import { useState } from 'react';
+
+export default function ClientComponent() {
+  const [state, setState] = useState(0);
+  return <button onClick={() => setState(state + 1)}>{state}</button>
+}
+
+// 3. 将客户端逻辑与服务器逻辑分离
+// ServerComponent.tsx - 保持服务器组件
+export default function ServerWrapper() {
+  return <ClientComponent />;
+}
+
+// ClientComponent.tsx - 仅包含客户端逻辑
+"use client";
+// 客户端逻辑...
+```
+
+### 数据获取
+
+```tsx
+// Server Components 中的数据获取
+export default async function Page() {
+  // Server Components 中可以直接使用 async/await
+  const data = await fetch('https://api.example.com/data');
+  const json = await data.json();
+  
+  return <div>{json.title}</div>
+}
+
+// Client Components 中的数据获取
+"use client";
+import { useQuery } from '@tanstack/react-query';
+
+export default function ClientFetching() {
+  // 使用 React Query 进行客户端数据获取
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['data'],
+    queryFn: () => fetch('/api/data').then(res => res.json())
+  });
+  
+  if (isLoading) return <div>加载中...</div>;
+  if (error) return <div>错误</div>;
+  
+  return <div>{data.title}</div>
+}
+```
+
+### 路由和布局
+
+```tsx
+// app/layout.tsx - 根布局
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="zh-CN">
+      <body>{children}</body>
+    </html>
+  )
+}
+
+// app/[courseId]/page.tsx - 动态路由
+export default function CoursePage({
+  params,
+}: {
+  params: { courseId: string }
+}) {
+  return <div>课程 ID: {params.courseId}</div>
+}
+```
+
+### 音频处理最佳实践
+
+```tsx
+// 1. 使用 Web Audio API 创建上下文
+"use client";
+import { useEffect, useRef } from 'react';
+
+export function AudioPlayer() {
+  const audioContextRef = useRef<AudioContext | null>(null);
+  
+  useEffect(() => {
+    // 仅在客户端且用户交互后创建 AudioContext
+    const handleUserInteraction = () => {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+    };
+    
+    window.addEventListener('click', handleUserInteraction);
+    return () => window.removeEventListener('click', handleUserInteraction);
+  }, []);
+  
+  // 播放器实现...
+}
+
+// 2. 与 WebAssembly 集成
+async function initAudioProcessor() {
+  // 异步加载 WebAssembly 模块
+  const wasmModule = await import('@/lib/audio-processor.wasm');
+  return wasmModule;
+}
+```
+
+## TypeScript 最佳实践
+
+### 类型定义
+
+```tsx
+// 定义音轨类型
+interface Track {
+  id: string;
+  title: string;
+  artist?: string;
+  duration: number;
+  isSystem: boolean;
+  url: string;
+  metadata: {
+    courseId: string;
+    unitId: string;
+    createdAt: string;
+  };
+}
+
+// 定义音频播放器状态
+type AudioPlayerState = {
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+  volume: number;
+  currentTrack: Track | null;
+  playbackRate: number;
+  loopRegion: { start: number; end: number } | null;
+};
+
+// 使用类型
+const [playerState, setPlayerState] = useState<AudioPlayerState>({
+  currentTime: 0,
+  duration: 0,
+  isPlaying: false,
+  volume: 1,
+  currentTrack: null,
+  playbackRate: 1,
+  loopRegion: null,
+});
+```
+
+## 目录结构规范
+
+```
+app/
+├── (auth)/           # 分组路由 - 认证相关页面
+├── (dashboard)/      # 分组路由 - 仪表盘相关页面
+├── api/              # API 路由
+│   └── audio/        # 音频相关 API
+├── [courseId]/       # 动态路由 - 课程页面
+│   └── [unitId]/     # 嵌套动态路由 - 单元页面
+└── layout.tsx        # 根布局
+
+components/
+├── ui/               # 基础 UI 组件
+├── audio/            # 音频相关组件
+│   ├── AudioPlayer.tsx
+│   ├── Waveform.tsx
+│   └── Controls.tsx
+├── tracks/           # 音轨相关组件
+└── common/           # 通用组件
+
+lib/
+├── audio/            # 音频处理逻辑
+│   ├── context.ts
+│   ├── processor.ts
+│   └── wasm/         # WebAssembly 集成
+├── api/              # API 客户端
+└── utils/            # 通用工具函数
+
+public/
+├── audio/            # 静态音频资源（测试用）
+└── images/           # 图片资源
+```
+
+### 命名约定
+
+1. 组件文件使用 PascalCase 命名（如 `AudioPlayer.tsx`）
+2. 工具函数和钩子使用 camelCase 命名（如 `useAudioContext.ts`）
+3. 目录使用小写连字符命名（如 `audio-context`）
+4. 类型定义文件使用 `.d.ts` 扩展名（如 `audio-types.d.ts`）
