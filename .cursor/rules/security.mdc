@@ -3,7 +3,7 @@ description:
 globs: 
 alwaysApply: true
 ---
- ---
+---
 description: 系统安全机制和实现
 globs: 
 alwaysApply: true

@@ -3,7 +3,7 @@ description:
 globs: 
 alwaysApply: true
 ---
- ---
+---
 description: 编码规范和风格指南
 globs: "**/*.{js,jsx,ts,tsx,go,rs}"
 alwaysApply: true

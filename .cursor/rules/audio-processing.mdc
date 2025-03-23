@@ -3,7 +3,7 @@ description:
 globs: 
 alwaysApply: true
 ---
- ---
+---
 description: 音频处理相关的规范和API
 globs: "**/audio/**/*.{js,jsx,ts,tsx}"
 alwaysApply: true
@@ -784,3 +784,294 @@ function handleAudioError(error: Error, context: AudioContext | null) {
   }
 }
 ```
+
+## 常见错误和避免的反模式
+
+以下是在音频处理实现中应该避免的常见错误和反模式：
+
+### 1. 混合式音频处理方法
+
+```typescript
+// 错误: 混合使用 HTML Audio 元素和 Web Audio API
+function createMixedAudioPlayer() {
+  // 创建 HTML Audio 元素
+  const audioElement = new Audio();
+  
+  // 同时创建 AudioContext
+  const audioContext = new AudioContext();
+  
+  // 将两者混合使用
+  const source = audioContext.createMediaElementSource(audioElement);
+  
+  return {
+    play: () => {
+      // 有时直接操作 audio 元素
+      audioElement.play();
+      
+      // 有时通过 Web Audio API 操作
+      // 这导致重复处理和资源浪费
+    }
+  };
+}
+
+// 正确: 完全使用 Web Audio API
+function createAudioPlayer() {
+  const audioContext = new AudioContext();
+  
+  async function loadAndPlay(url) {
+    const response = await fetch(url);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    const source = audioContext.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioContext.destination);
+    source.start();
+    
+    return source;
+  }
+  
+  return { loadAndPlay };
+}
+```
+
+### 2. 忽略音频长度的加载策略
+
+```typescript
+// 错误: 对所有音频使用相同的加载策略
+function loadAudio(url) {
+  // 无论音频大小如何，总是使用相同方法
+  fetch(url)
+    .then(response => response.arrayBuffer())
+    .then(arrayBuffer => audioContext.decodeAudioData(arrayBuffer));
+}
+
+// 正确: 根据音频长度选择适当的加载策略
+async function loadAudio(url, options = { threshold: 5 * 1024 * 1024 }) {
+  // 首先检查文件大小
+  const headResponse = await fetch(url, { method: 'HEAD' });
+  const contentLength = parseInt(headResponse.headers.get('content-length') || '0');
+  
+  if (contentLength > options.threshold) {
+    // 长音频使用流媒体加载
+    return loadAudioStream(url);
+  } else {
+    // 短音频使用完整加载
+    return loadCompleteAudio(url);
+  }
+}
+```
+
+### 3. 缺乏有效的缓冲监控
+
+```typescript
+// 错误: 仅依赖事件监听缓冲状态
+function monitorBuffering(audioElement) {
+  audioElement.addEventListener('waiting', () => {
+    console.log('缓冲中...');
+  });
+  
+  audioElement.addEventListener('canplay', () => {
+    console.log('可以播放');
+  });
+}
+
+// 正确: 使用基于 AudioContext 的监控方法
+function createBufferingMonitor(audioContext, mediaSource) {
+  let lastTime = 0;
+  let lastPosition = 0;
+  let isBuffering = false;
+  
+  const checkBuffering = () => {
+    const currentTime = audioContext.currentTime;
+    const currentPosition = mediaSource.mediaElement.currentTime;
+    
+    // 检测是否正在播放但位置没有改变
+    if (mediaSource.mediaElement.paused === false) {
+      if (currentPosition === lastPosition && currentTime > lastTime + 0.1) {
+        if (!isBuffering) {
+          isBuffering = true;
+          console.log('缓冲中...');
+        }
+      } else if (isBuffering) {
+        isBuffering = false;
+        console.log('继续播放');
+      }
+    }
+    
+    lastTime = currentTime;
+    lastPosition = currentPosition;
+  };
+  
+  const intervalId = setInterval(checkBuffering, 100);
+  
+  return {
+    stop: () => clearInterval(intervalId)
+  };
+}
+```
+
+### 4. 资源管理不当
+
+```typescript
+// 错误: 没有适当释放 AudioNode 和 AudioContext
+function createPlayer() {
+  let context = new AudioContext();
+  let nodes = [];
+  
+  function playSound(buffer) {
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    
+    const gain = context.createGain();
+    
+    source.connect(gain);
+    gain.connect(context.destination);
+    
+    source.start();
+    
+    // 没有跟踪或释放节点
+    nodes.push(source, gain);
+  }
+  
+  // 没有提供关闭或清理方法
+}
+
+// 正确: 适当管理资源生命周期
+function createPlayer() {
+  let context = new AudioContext();
+  let activeNodes = new Set();
+  
+  function playSound(buffer) {
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    
+    const gain = context.createGain();
+    
+    source.connect(gain);
+    gain.connect(context.destination);
+    
+    // 跟踪活动节点
+    activeNodes.add(source);
+    activeNodes.add(gain);
+    
+    // 设置完成时的清理
+    source.onended = () => {
+      source.disconnect();
+      gain.disconnect();
+      activeNodes.delete(source);
+      activeNodes.delete(gain);
+    };
+    
+    source.start();
+    
+    return source;
+  }
+  
+  // 提供清理方法
+  function dispose() {
+    // 断开所有活动节点
+    for (const node of activeNodes) {
+      try {
+        node.disconnect();
+      } catch (e) {
+        console.error('Error disconnecting node:', e);
+      }
+    }
+    
+    activeNodes.clear();
+    
+    // 关闭上下文
+    if (context.state !== 'closed') {
+      context.close();
+    }
+  }
+  
+  return {
+    playSound,
+    dispose
+  };
+}
+```
+
+### 5. 缺少错误处理和降级策略
+
+```typescript
+// 错误: 没有错误处理和降级
+async function processAudio(arrayBuffer) {
+  // 假设 WebAssembly 总是可用
+  const wasm = await initWebAssembly();
+  return wasm.processAudioData(arrayBuffer);
+}
+
+// 正确: 提供适当的错误处理和降级
+async function processAudio(arrayBuffer) {
+  try {
+    // 尝试使用 WebAssembly
+    if (typeof WebAssembly === 'object') {
+      try {
+        const wasm = await initWebAssembly();
+        return wasm.processAudioData(arrayBuffer);
+      } catch (wasmError) {
+        console.warn('WebAssembly processing failed, falling back to JS implementation:', wasmError);
+      }
+    }
+    
+    // JavaScript 降级实现
+    return processAudioWithJS(arrayBuffer);
+  } catch (error) {
+    console.error('Audio processing error:', error);
+    throw new Error('无法处理音频，请尝试其他文件或刷新页面');
+  }
+}
+```
+
+### 6. 未参考官方文档和示例
+
+```typescript
+// 错误: 使用非标准或过时的方法
+function createAudioVisualization() {
+  // 未遵循标准实践
+  const analyser = audioContext.createScriptProcessor(2048, 1, 1);
+  // ScriptProcessorNode 已弃用，应使用 AudioWorklet
+}
+
+// 正确: 遵循 MDN 官方示例和最佳实践
+function createAudioVisualization() {
+  // 使用推荐的 AnalyserNode
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  
+  // 按照 MDN 示例处理频率数据
+  const bufferLength = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  
+  function draw() {
+    requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(dataArray);
+    // 绘制可视化...
+  }
+  
+  draw();
+  
+  return analyser;
+}
+```
+
+## 总体最佳实践总结
+
+1. **完全使用 Web Audio API**: 避免混合使用 HTML Audio 元素和 Web Audio API，应完全使用 Web Audio API 处理音频。
+
+2. **遵循官方示例**: 参考 MDN Web Audio API 官方文档和示例，确保使用标准方法和最新推荐实践。
+
+3. **使用标准方法**: 优先使用 `AudioBufferSourceNode`、`decodeAudioData` 等标准 API 方法处理音频。
+
+4. **自适应加载策略**: 根据音频长度选择适当的加载策略，长音频使用流媒体加载，短音频使用标准加载。
+
+5. **精确的缓冲监控**: 使用基于 AudioContext 的监控方法，提供更精确的缓冲状态检测。
+
+6. **资源管理优化**: 实现完善的内存和连接管理，以及明确的资源释放流程。
+
+7. **降级和错误处理**: 为 WebAssembly 不可用情况提供 JavaScript 回退实现，实现健壮的错误处理和用户友好的反馈。
+
+8. **性能优化**: 避免不必要的处理和转换，尤其是在音频可视化和效果处理中。

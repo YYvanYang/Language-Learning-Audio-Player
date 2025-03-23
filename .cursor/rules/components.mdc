@@ -3,7 +3,7 @@ description:
 globs: 
 alwaysApply: true
 ---
- ---
+---
 description: 前端组件设计和使用规范
 globs: "**/*.{jsx,tsx}"
 alwaysApply: true

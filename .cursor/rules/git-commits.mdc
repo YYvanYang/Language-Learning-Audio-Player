@@ -3,7 +3,7 @@ description:
 globs: 
 alwaysApply: true
 ---
- ---
+---
 description: Git提交规范和自动化
 globs: "*"
 alwaysApply: true
