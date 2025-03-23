@@ -8,6 +8,7 @@ import BookmarkList from './BookmarkList';
 import ABLoopControl from './ABLoopControl';
 import { generateToken } from '@/lib/auth';
 import { initAudioProcessor } from '@/lib/audio/processing';
+import { setupAdaptivePlayback } from '@/lib/audio/buffer-monitor';
 
 const AudioPlayer = ({ 
   courseId, 
@@ -52,6 +53,7 @@ const AudioPlayer = ({
   const visualizerCanvasRef = useRef(null);
   const visualizerFrameRef = useRef(null);
   const workletNodeRef = useRef(null);
+  const audioRef = useRef(null);
   
   // 将当前轨道ID传递给父组件
   useEffect(() => {
@@ -772,6 +774,36 @@ const AudioPlayer = ({
     };
   }, []);
   
+  useEffect(() => {
+    if (!audioRef.current) return;
+    
+    // 设置自适应播放
+    const adaptivePlayback = setupAdaptivePlayback(audioRef.current, {
+      onBufferingStart: () => {
+        setIsBuffering(true);
+        // 用户可能会看到UI变化，所以添加通知
+        console.log('音频缓冲中...');
+      },
+      onBufferingEnd: (duration) => {
+        setIsBuffering(false);
+        if (duration > 3000) {
+          console.log(`音频缓冲结束，持续了 ${Math.round(duration/1000)} 秒`);
+        }
+      },
+      onStateChange: (newState) => {
+        // 可以根据缓冲状态调整UI
+        if (newState === 'critical') {
+          console.warn('缓冲状态严重不足');
+        }
+      }
+    });
+    
+    // 清理函数
+    return () => {
+      adaptivePlayback.dispose();
+    };
+  }, [audioRef.current]);
+  
   return (
     <div className="flex flex-col bg-blue-50 rounded-lg overflow-hidden">
       {/* 课程信息和标题 */}
@@ -1024,17 +1056,21 @@ const AudioPlayer = ({
             <SkipBack size={36} />
           </button>
           
-          <button 
-            className={`${isPlaying ? 'bg-teal-500' : 'bg-yellow-500'} 
-                      w-16 h-16 rounded-full flex items-center justify-center text-white shadow-md
-                      hover:opacity-90 active:opacity-75 transition-all`}
+          <button
+            className={`${isPlaying ? 'bg-teal-500' : 'bg-yellow-500'}
+              w-16 h-16 rounded-full flex items-center justify-center text-white shadow-md
+              hover:opacity-90 active:opacity-75 transition-all`}
             onClick={togglePlay}
             disabled={isBuffering || tracks.length === 0}
             aria-label={isPlaying ? "暂停" : "播放"}
           >
-            {isBuffering ? (
-              <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : isPlaying ? (
+            {isBuffering && (
+              <div className="flex items-center ml-3 bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">
+                <div className="w-3 h-3 mr-1 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <span>缓冲中</span>
+              </div>
+            )}
+            {isPlaying ? (
               <Pause size={32} />
             ) : (
               <Play size={32} />
