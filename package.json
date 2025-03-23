@@ -13,7 +13,10 @@
     "status:completed": "node scripts/update-status.js add-completed",
     "status:pending": "node scripts/update-status.js add-pending",
     "status:mark": "node scripts/update-status.js mark-completed",
-    "status:log": "node scripts/update-status.js add-log"
+    "status:log": "node scripts/update-status.js add-log",
+    "status:priority": "node scripts/update-status.js set-priority",
+    "status:move": "node scripts/update-status.js move-feature",
+    "status:progress": "node scripts/update-status.js show-progress"
   },
   "keywords": [
     "language-learning",
