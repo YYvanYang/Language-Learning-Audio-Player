@@ -29,6 +29,11 @@ alwaysApply: true
 - [安全机制](mdc:.cursor/rules/security.mdc) - 系统安全机制和实现
 - [代码风格](mdc:.cursor/rules/code-style.mdc) - 编码规范和风格指南
 - [Git提交规范](mdc:.cursor/rules/git-commits.mdc) - Git提交格式和自动化规则
+- [状态跟踪](mdc:.cursor/rules/status-tracking.mdc) - 项目状态跟踪和更新规则
+
+## 项目状态
+
+项目进度和状态在 [PROJECT_STATUS.md](mdc:PROJECT_STATUS.md) 文件中进行跟踪。该文件记录了已完成和待完成的功能，以及开发更新日志。在实现或修改功能时，请确保更新该文档以保持项目进度的透明性。
 
 ## 参考资源
 

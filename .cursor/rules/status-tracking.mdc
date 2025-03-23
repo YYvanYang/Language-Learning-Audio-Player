@@ -1,0 +1,87 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: 项目状态跟踪规则
+globs: "**/*.{js,jsx,ts,tsx,go,rs}"
+alwaysApply: true
+---
+
+# 项目状态跟踪规则
+
+该规则确保在实现或修改项目功能时，同步更新项目状态文档。
+
+<rule>
+name: update_project_status
+description: 在完成功能实现后更新项目状态文档
+filters:
+  - type: event
+    pattern: "completion"
+  - type: file_change
+    pattern: "**/*.{js,jsx,ts,tsx,go,rs}"
+
+actions:
+  - type: suggest
+    message: |
+      您刚刚完成了功能实现或修改。请记得更新项目状态文档：
+      
+      1. 如果实现了新功能：运行 `npm run status:completed` 添加到已完成列表
+      2. 如果完成了待办功能：运行 `npm run status:mark` 标记为已完成
+      3. 如果发现新的待办功能：运行 `npm run status:pending` 添加到待完成列表
+      
+      或者直接编辑 PROJECT_STATUS.md 文件，按照约定格式更新内容。
+
+      当前项目状态： {{ PROJECT_STATUS_SUMMARY }}
+      
+  - type: execute
+    command: |
+      # 获取项目状态摘要
+      PROJECT_STATUS_SUMMARY=$(grep -A 3 "## 🟠 待完成功能" PROJECT_STATUS.md | grep -v "##")
+      
+      # 如果涉及功能实现，提醒用户更新状态
+      if [[ "$CHANGE_DESCRIPTION" == *"实现"* ]] || 
+         [[ "$CHANGE_DESCRIPTION" == *"完成"* ]] ||
+         [[ "$CHANGE_DESCRIPTION" == *"添加功能"* ]]; then
+        echo "请记得更新项目状态文档 PROJECT_STATUS.md"
+      fi
+
+examples:
+  - input: |
+      # 实现某功能后
+      CHANGE_DESCRIPTION="实现音频波形可视化功能"
+      FILE="web-client/components/WaveformVisualizer.jsx"
+    output: "提醒用户更新项目状态文档"
+
+metadata:
+  priority: high
+  version: 1.0
+</rule>
+
+## AI助手指南
+
+当AI助手（如Claude）帮助实现或完善项目功能时，应遵循以下指南：
+
+1. **识别功能关联**：检查实现的功能是否与PROJECT_STATUS.md中的待完成项目相关
+
+2. **明确提示更新**：在完成功能实现后，明确提示用户：
+   ```
+   您可以通过以下方式更新项目状态：
+   - 运行 `npm run status:completed` 添加新完成的功能
+   - 运行 `npm run status:mark` 将待办功能标记为已完成
+   - 直接编辑 PROJECT_STATUS.md 文件
+   ```
+
+3. **提供更新建议**：如果实现的功能正好是待完成列表中的某一项，提供具体的更新建议：
+   ```
+   建议更新PROJECT_STATUS.md:
+   - 将"⬜ XXX功能"更新为"✅ XXX功能"
+   - 在更新日志部分添加"✅ 完成XXX功能"
+   ```
+
+4. **自动检查状态**：在每次代码实现后，主动检查PROJECT_STATUS.md中的待完成功能列表，识别可能已完成的功能
+
+5. **关注项目进度**：随时了解项目整体进度，推荐下一步应该实现的功能
+
+通过遵循这些指南，AI助手可以帮助维护项目状态文档的准确性和及时性，提高项目管理效率。
