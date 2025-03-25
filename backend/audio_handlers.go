@@ -9,6 +9,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+	"math/rand"
+	"log"
+	"encoding/json"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,11 +23,82 @@ type StreamTokenRequest struct {
 	Token string `json:"token" binding:"required"`
 }
 
-// 简化的音频流处理函数 - 支持单一质量音频文件
-func streamAudioHandler(c *gin.Context) {
-	var req StreamTokenRequest
+// 音频令牌请求结构
+type AudioTokenRequest struct {
+	CourseID string `json:"courseId" binding:"required"`
+	UnitID   string `json:"unitId" binding:"required"`
+	TrackID  string `json:"trackId" binding:"required"`
+	Action   string `json:"action" binding:"required,oneof=stream_audio get_metadata"`
+}
+
+// 音频元数据响应结构
+type AudioMetadata struct {
+	TrackID        string             `json:"trackId"`
+	Title          string             `json:"title"`
+	Artist         string             `json:"artist,omitempty"`
+	Duration       float64            `json:"duration"`
+	Format         string             `json:"format"`
+	BitRate        int                `json:"bitRate,omitempty"`
+	SampleRate     int                `json:"sampleRate,omitempty"`
+	Channels       int                `json:"channels,omitempty"`
+	WaveformData   []float32          `json:"waveformData,omitempty"`
+	SpectralData   []float32          `json:"spectralData,omitempty"`
+	Bookmarks      []AudioBookmark    `json:"bookmarks,omitempty"`
+	TranscriptData *AudioTranscript   `json:"transcriptData,omitempty"`
+	CustomData     map[string]interface{} `json:"customData,omitempty"`
+}
+
+// 音频书签结构
+type AudioBookmark struct {
+	ID        string  `json:"id"`
+	TimePoint float64 `json:"timePoint"`
+	Label     string  `json:"label"`
+	Color     string  `json:"color,omitempty"`
+	Notes     string  `json:"notes,omitempty"`
+}
+
+// 音频字幕/转录结构
+type AudioTranscript struct {
+	Language string           `json:"language"`
+	Segments []TranscriptSegment `json:"segments"`
+}
+
+// 字幕片段
+type TranscriptSegment struct {
+	StartTime float64 `json:"startTime"`
+	EndTime   float64 `json:"endTime"`
+	Text      string  `json:"text"`
+}
+
+// 随机字符串生成
+func generateRandomString(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+// 获取音频访问令牌处理函数
+func getAudioTokenHandler(c *gin.Context) {
+	// 获取参数
+	trackID := c.Param("trackId")
+	if trackID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少音轨ID"})
+		return
+	}
+
+	// 获取请求体参数
+	var req AudioTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求格式"})
+		return
+	}
+
+	// 验证参数一致性
+	if req.TrackID != trackID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数不一致"})
 		return
 	}
 
@@ -33,27 +109,117 @@ func streamAudioHandler(c *gin.Context) {
 		return
 	}
 
+	// 验证用户是否有权访问此课程
+	hasAccess, err := userHasAccessToCourse(userID.(string), req.CourseID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "验证用户权限失败"})
+		return
+	}
+
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "您没有权限访问此课程"})
+		return
+	}
+
+	// 验证音轨是否存在
+	audioPath, err := getAudioFilePath(req.CourseID, req.UnitID, req.TrackID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "音频文件不存在"})
+		return
+	}
+
+	// 验证文件是否存在并可读
+	if _, err := os.Stat(audioPath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "音频文件不存在"})
+		return
+	}
+
+	// 创建令牌
+	currentTime := time.Now()
+	expirationTime := currentTime.Add(5 * time.Minute) // 令牌有效期5分钟
+
+	token := AudioAccessToken{
+		CourseID:   req.CourseID,
+		UnitID:     req.UnitID,
+		TrackID:    req.TrackID,
+		UserID:     userID.(string),
+		Action:     req.Action,
+		Timestamp:  currentTime.Unix(),
+		Nonce:      generateRandomString(16),
+		Expiration: expirationTime.Unix(),
+	}
+
+	// 加密令牌
+	encryptedToken, err := CreateAccessToken(token, getAudioSecretKey())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "生成令牌失败"})
+		return
+	}
+
+	// 返回令牌
+	c.JSON(http.StatusOK, gin.H{
+		"token":     encryptedToken,
+		"expiresAt": expirationTime.Unix(),
+	})
+}
+
+// 简化的音频流处理函数 - 支持单一质量音频文件
+func streamAudioHandler(c *gin.Context) {
+	// 获取音轨ID
+	trackID := c.Param("trackId")
+	if trackID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少音轨ID"})
+		return
+	}
+
+	// 获取令牌参数
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少访问令牌"})
+		return
+	}
+
 	// 解析和验证令牌
-	token, err := ParseAccessToken(req.Token, getAudioSecretKey())
+	accessToken, err := ParseAccessToken(token, getAudioSecretKey())
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的访问令牌"})
 		return
 	}
 
 	// 验证令牌操作类型和有效期
-	if err := token.Validate("stream_audio"); err != nil {
+	if err := accessToken.Validate("stream_audio"); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	// 验证用户身份
-	if token.UserID != userID.(string) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "访问被拒绝"})
+	// 验证令牌中的音轨ID与请求的音轨ID是否匹配
+	if accessToken.TrackID != trackID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "令牌与请求不匹配"})
 		return
 	}
 
+	// 验证来源域名（防盗链）
+	referer := c.Request.Header.Get("Referer")
+	if referer != "" {
+		// 实际环境中应从配置读取允许的域名列表
+		allowedDomains := strings.Split(getEnv("ALLOWED_DOMAINS", "localhost:3000,localhost:8080"), ",")
+		refererValid := false
+		
+		for _, domain := range allowedDomains {
+			if strings.Contains(referer, strings.TrimSpace(domain)) {
+				refererValid = true
+				break
+			}
+		}
+		
+		if !refererValid {
+			c.JSON(http.StatusForbidden, gin.H{"error": "非法的资源访问来源"})
+			return
+		}
+	}
+
 	// 构建音频文件路径 - 支持系统音频和用户上传的音频
-	audioPath, err := getAudioFilePath(token.CourseID, token.UnitID, token.TrackID)
+	audioPath, err := getAudioFilePath(accessToken.CourseID, accessToken.UnitID, accessToken.TrackID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "音频文件不存在"})
 		return
@@ -74,18 +240,35 @@ func streamAudioHandler(c *gin.Context) {
 		return
 	}
 
+	// 设置内容类型
+	contentType := getContentType(audioPath)
+	c.Header("Content-Type", contentType)
+
+	// 设置安全相关的响应头
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+	c.Header("Content-Disposition", "inline")
+	c.Header("X-Content-Type-Options", "nosniff")
+
+	// 记录访问日志
+	logAudioAccess(accessToken.UserID, accessToken.TrackID, c.ClientIP())
+
 	// 处理范围请求（如果有）
 	rangeHeader := c.Request.Header.Get("Range")
 	if rangeHeader != "" {
 		// 解析范围请求
 		ranges, err := parseRange(rangeHeader, fileInfo.Size())
 		if err != nil {
+			c.Header("Content-Range", fmt.Sprintf("bytes */%d", fileInfo.Size()))
 			c.JSON(http.StatusRequestedRangeNotSatisfiable, gin.H{"error": "请求范围无效"})
 			return
 		}
 
 		// 目前只支持单范围请求
 		if len(ranges) > 1 {
+			c.Header("Content-Range", fmt.Sprintf("bytes */%d", fileInfo.Size()))
 			c.JSON(http.StatusRequestedRangeNotSatisfiable, gin.H{"error": "不支持多范围请求"})
 			return
 		}
@@ -96,37 +279,82 @@ func streamAudioHandler(c *gin.Context) {
 		c.Status(http.StatusPartialContent)
 
 		// 移动到范围起始位置
-		audioFile.Seek(ranges[0].Start, io.SeekStart)
-
-		// 流式传输部分文件
-		written, err := io.CopyN(c.Writer, audioFile, ranges[0].Length)
-		if err != nil && err != io.EOF {
-			c.Status(http.StatusInternalServerError)
+		_, err = audioFile.Seek(ranges[0].Start, io.SeekStart)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "无法设置文件位置"})
 			return
 		}
 
-		if written != ranges[0].Length {
-			c.Status(http.StatusInternalServerError)
-			return
+		// 创建一个缓冲区进行高效传输
+		buffer := make([]byte, 4096) // 4KB缓冲区
+		bytesRemaining := ranges[0].Length
+		
+		for bytesRemaining > 0 {
+			readSize := int64(len(buffer))
+			if bytesRemaining < readSize {
+				readSize = bytesRemaining
+			}
+			
+			n, err := audioFile.Read(buffer[:readSize])
+			if err != nil && err != io.EOF {
+				// 记录错误但不中断流传输
+				log.Printf("读取文件错误: %v", err)
+				break
+			}
+			
+			if n == 0 {
+				break // 文件结束
+			}
+			
+			_, err = c.Writer.Write(buffer[:n])
+			if err != nil {
+				// 客户端可能断开连接
+				log.Printf("写入响应错误: %v", err)
+				break
+			}
+			
+			bytesRemaining -= int64(n)
 		}
 	} else {
 		// 流式传输整个文件
 		c.Header("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
-		c.Header("Accept-Ranges", "bytes")
-
-		// 设置内容类型
-		contentType := getContentType(audioPath)
-		c.Header("Content-Type", contentType)
-
-		// 禁止缓存和下载
-		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-		c.Header("Pragma", "no-cache")
-		c.Header("Expires", "0")
-		c.Header("Content-Disposition", "inline")
-
-		// 流式传输文件
-		http.ServeContent(c.Writer, c.Request, "", fileInfo.ModTime(), audioFile)
+		
+		// 使用自定义的方式流式传输，以便更好的控制和监控
+		buffer := make([]byte, 8192) // 8KB缓冲区
+		bytesTotal := fileInfo.Size()
+		bytesSent := int64(0)
+		
+		for bytesSent < bytesTotal {
+			n, err := audioFile.Read(buffer)
+			if err != nil && err != io.EOF {
+				log.Printf("读取文件错误: %v", err)
+				break
+			}
+			
+			if n == 0 {
+				break // 文件结束
+			}
+			
+			_, err = c.Writer.Write(buffer[:n])
+			if err != nil {
+				log.Printf("写入响应错误: %v", err)
+				break
+			}
+			
+			bytesSent += int64(n)
+			
+			// 防止带宽过载，增加一个微小延迟（可选）
+			// time.Sleep(time.Microsecond * 100)
+		}
 	}
+}
+
+// 记录音频访问日志
+func logAudioAccess(userID, trackID, clientIP string) {
+	// 在实际产品中，应将日志写入数据库或日志文件
+	// 简化实现，仅打印到控制台
+	log.Printf("音频访问: 用户ID=%s, 音轨ID=%s, IP=%s, 时间=%s",
+		userID, trackID, clientIP, time.Now().Format(time.RFC3339))
 }
 
 // 音轨列表请求
@@ -536,4 +764,671 @@ func userHasAccessToCourse(userID, courseID string) (bool, error) {
 	// 在实际应用中，这里应该查询用户的课程访问权限
 	// 现在简单返回true作为示例
 	return true, nil
+}
+
+// 获取音频元数据处理程序
+func getAudioMetadataHandler(c *gin.Context) {
+	// 获取参数
+	trackID := c.Param("trackId")
+	if trackID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少音轨ID"})
+		return
+	}
+
+	// 获取当前已验证的用户ID
+	userID, exists := c.Get("userId")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
+		return
+	}
+
+	// 获取查询参数
+	courseID := c.Query("courseId")
+	unitID := c.Query("unitId")
+	
+	if courseID == "" || unitID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少课程ID或单元ID"})
+		return
+	}
+
+	// 验证用户是否有权访问此课程
+	hasAccess, err := userHasAccessToCourse(userID.(string), courseID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "验证用户权限失败"})
+		return
+	}
+
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "您没有权限访问此课程"})
+		return
+	}
+
+	// 获取音频文件路径
+	audioPath, err := getAudioFilePath(courseID, unitID, trackID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "音频文件不存在"})
+		return
+	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(audioPath); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "音频文件不存在"})
+		return
+	}
+
+	// 获取音频元数据
+	metadata, err := extractAudioMetadata(audioPath, trackID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "提取音频元数据失败"})
+		return
+	}
+
+	// 获取用户为此音轨设置的书签
+	bookmarks, err := getUserBookmarks(userID.(string), trackID)
+	if err == nil && len(bookmarks) > 0 {
+		metadata.Bookmarks = bookmarks
+	}
+
+	// 获取音频转录文本（如果有）
+	transcript, err := getAudioTranscript(courseID, unitID, trackID)
+	if err == nil {
+		metadata.TranscriptData = transcript
+	}
+
+	// 获取音频波形数据（如果有）
+	waveformData, err := getAudioWaveform(courseID, unitID, trackID)
+	if err == nil {
+		metadata.WaveformData = waveformData
+	}
+
+	// 获取用户自定义数据
+	customData, err := getUserAudioCustomData(userID.(string), trackID)
+	if err == nil {
+		metadata.CustomData = customData
+	}
+
+	c.JSON(http.StatusOK, metadata)
+}
+
+// 提取音频文件元数据
+func extractAudioMetadata(audioPath, trackID string) (*AudioMetadata, error) {
+	// 在实际产品中，应使用FFmpeg或其他音频处理库提取完整元数据
+	// 这里为简化实现，仅从文件名和大小推断基本信息
+	
+	fileInfo, err := os.Stat(audioPath)
+	if err != nil {
+		return nil, err
+	}
+	
+	// 从文件名获取基本信息
+	fileName := filepath.Base(audioPath)
+	fileExt := strings.ToLower(filepath.Ext(audioPath))
+	
+	// 确定格式
+	format := "unknown"
+	switch fileExt {
+	case ".mp3":
+		format = "audio/mpeg"
+	case ".wav":
+		format = "audio/wav"
+	case ".ogg":
+		format = "audio/ogg"
+	case ".flac":
+		format = "audio/flac"
+	case ".m4a":
+		format = "audio/m4a"
+	}
+	
+	// 估算时长和比特率（在真实环境中应使用媒体处理库）
+	// 这里的估算非常粗略，仅用于演示
+	bitRate := 128000 // 默认比特率128kbps
+	fileSize := fileInfo.Size()
+	duration := float64(fileSize*8) / float64(bitRate)
+	
+	// 创建元数据
+	metadata := &AudioMetadata{
+		TrackID:    trackID,
+		Title:      strings.TrimSuffix(fileName, fileExt),
+		Format:     format,
+		Duration:   duration,
+		BitRate:    bitRate,
+		SampleRate: 44100, // 假设采样率44.1kHz
+		Channels:   2,     // 假设立体声
+	}
+	
+	return metadata, nil
+}
+
+// 获取用户书签（模拟实现）
+func getUserBookmarks(userID, trackID string) ([]AudioBookmark, error) {
+	// 在实际产品中，应从数据库中获取用户为特定音轨设置的书签
+	// 这里为模拟实现，返回一些测试数据
+	
+	// 如果不存在书签，返回空数组
+	if rand.Intn(2) == 0 {
+		return []AudioBookmark{}, nil
+	}
+	
+	// 模拟一些书签
+	bookmarks := []AudioBookmark{
+		{
+			ID:        generateRandomString(8),
+			TimePoint: 15.5,
+			Label:     "重要短语",
+			Color:     "#ff5722",
+		},
+		{
+			ID:        generateRandomString(8),
+			TimePoint: 42.2,
+			Label:     "语法点",
+			Color:     "#4caf50",
+			Notes:     "注意这里的时态变化",
+		},
+	}
+	
+	return bookmarks, nil
+}
+
+// 获取音频转录（模拟实现）
+func getAudioTranscript(courseID, unitID, trackID string) (*AudioTranscript, error) {
+	// 在实际产品中，应从数据库或文件系统中获取相应的转录文件
+	// 这里为模拟实现，返回一些测试数据或nil
+	
+	// 随机决定是否有转录
+	if rand.Intn(2) == 0 {
+		return nil, fmt.Errorf("无转录数据")
+	}
+	
+	// 模拟转录数据
+	transcript := &AudioTranscript{
+		Language: "zh-CN",
+		Segments: []TranscriptSegment{
+			{
+				StartTime: 0.0,
+				EndTime:   5.2,
+				Text:      "欢迎使用语言学习音频播放器。",
+			},
+			{
+				StartTime: 5.5,
+				EndTime:   12.3,
+				Text:      "这是一个示例转录文本，用于测试功能。",
+			},
+			{
+				StartTime: 13.0,
+				EndTime:   18.5,
+				Text:      "在实际使用中，这些文本将与音频同步显示。",
+			},
+		},
+	}
+	
+	return transcript, nil
+}
+
+// 获取音频波形数据（模拟实现）
+func getAudioWaveform(courseID, unitID, trackID string) ([]float32, error) {
+	// 在实际产品中，应预先处理并存储波形数据或实时生成
+	// 这里为模拟实现，生成一些随机数据
+	
+	// 为简化起见，只生成100个点的波形数据
+	waveformData := make([]float32, 100)
+	
+	for i := range waveformData {
+		// 生成0-1之间的随机值
+		waveformData[i] = rand.Float32()
+	}
+	
+	return waveformData, nil
+}
+
+// 获取用户自定义数据（模拟实现）
+func getUserAudioCustomData(userID, trackID string) (map[string]interface{}, error) {
+	// 在实际产品中，应从数据库中获取用户对特定音轨的自定义数据
+	// 这里为模拟实现，返回一些测试数据
+	
+	// 如果不存在自定义数据，返回nil
+	if rand.Intn(2) == 0 {
+		return nil, fmt.Errorf("无自定义数据")
+	}
+	
+	// 模拟自定义数据
+	customData := map[string]interface{}{
+		"lastPosition": 25.7,
+		"playbackRate": 0.9,
+		"volumeLevel":  0.8,
+		"notes":        "这个音频讲解得很清楚",
+		"difficulty":   "intermediate",
+		"tags":         []string{"语法", "听力练习"},
+	}
+	
+	return customData, nil
+}
+
+// 音频上传处理程序
+func uploadAudioHandler(c *gin.Context) {
+	// 获取当前已验证的用户ID
+	userID, exists := c.Get("userId")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
+		return
+	}
+
+	// 获取课程和单元ID
+	courseID := c.PostForm("courseId")
+	unitID := c.PostForm("unitId")
+	title := c.PostForm("title")
+	description := c.PostForm("description")
+	
+	// 验证必要参数
+	if courseID == "" || unitID == "" || title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少必要参数"})
+		return
+	}
+
+	// 验证用户是否有权访问此课程
+	hasAccess, err := userHasAccessToCourse(userID.(string), courseID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "验证用户权限失败"})
+		return
+	}
+
+	if !hasAccess {
+		c.JSON(http.StatusForbidden, gin.H{"error": "您没有权限访问此课程"})
+		return
+	}
+
+	// 获取上传的文件
+	file, header, err := c.Request.FormFile("audioFile")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "获取上传文件失败"})
+		return
+	}
+	defer file.Close()
+
+	// 验证文件类型
+	fileExt := strings.ToLower(filepath.Ext(header.Filename))
+	if !isAllowedAudioFormat(fileExt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "不支持的音频格式"})
+		return
+	}
+
+	// 验证文件大小
+	if header.Size > maxAudioFileSize() {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("文件太大，最大允许大小为 %d MB", maxAudioFileSize()/1024/1024),
+		})
+		return
+	}
+
+	// 生成唯一文件名
+	trackID := generateUniqueID()
+	fileName := trackID + fileExt
+	
+	// 创建保存路径
+	uploadDir := filepath.Join("storage", "audio", "uploads", userID.(string))
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建上传目录失败"})
+		return
+	}
+	
+	// 保存文件路径
+	filePath := filepath.Join(uploadDir, fileName)
+	
+	// 创建文件
+	out, err := os.Create(filePath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建文件失败"})
+		return
+	}
+	defer out.Close()
+	
+	// 复制文件内容
+	if _, err = io.Copy(out, file); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
+		return
+	}
+
+	// 处理音频文件 - 在实际产品中应异步进行
+	processedFilePath, duration, err := processAudioFile(filePath, trackID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("处理音频文件失败: %s", err.Error())})
+		// 应该删除上传的原始文件
+		os.Remove(filePath)
+		return
+	}
+
+	// 保存音轨信息到数据库
+	trackInfo := UserTrackInfo{
+		ID:          trackID,
+		UserID:      userID.(string),
+		CourseID:    courseID,
+		UnitID:      unitID,
+		Title:       title,
+		Description: description,
+		FileName:    fileName,
+		FilePath:    processedFilePath,
+		OriginalFileName: header.Filename,
+		FileSize:    header.Size,
+		Duration:    duration,
+		Format:      fileExt[1:], // 去掉点号
+		UploadTime:  time.Now(),
+	}
+	
+	// 保存到数据库
+	if err := saveUserTrack(trackInfo); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存音轨信息失败"})
+		return
+	}
+
+	// 返回成功响应
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "音频上传成功",
+		"trackId":  trackID,
+		"title":    title,
+		"duration": duration,
+	})
+}
+
+// 用户音轨信息结构
+type UserTrackInfo struct {
+	ID              string    `json:"id"`
+	UserID          string    `json:"userId"`
+	CourseID        string    `json:"courseId"`
+	UnitID          string    `json:"unitId"`
+	Title           string    `json:"title"`
+	Description     string    `json:"description,omitempty"`
+	FileName        string    `json:"fileName"`
+	FilePath        string    `json:"filePath"`
+	OriginalFileName string   `json:"originalFileName"`
+	FileSize        int64     `json:"fileSize"`
+	Duration        float64   `json:"duration"`
+	Format          string    `json:"format"`
+	UploadTime      time.Time `json:"uploadTime"`
+}
+
+// 检查是否为允许的音频格式
+func isAllowedAudioFormat(ext string) bool {
+	allowedFormats := []string{".mp3", ".wav", ".ogg", ".m4a", ".flac"}
+	for _, format := range allowedFormats {
+		if ext == format {
+			return true
+		}
+	}
+	return false
+}
+
+// 最大允许的音频文件大小（100MB）
+func maxAudioFileSize() int64 {
+	// 从环境变量获取，默认100MB
+	sizeStr := getEnv("MAX_AUDIO_SIZE", "104857600")
+	size, err := strconv.ParseInt(sizeStr, 10, 64)
+	if err != nil {
+		return 104857600 // 100MB
+	}
+	return size
+}
+
+// 生成唯一ID
+func generateUniqueID() string {
+	return fmt.Sprintf("track_%d_%s", time.Now().Unix(), generateRandomString(8))
+}
+
+// 处理音频文件（在实际产品中应使用FFmpeg或其他专业库）
+func processAudioFile(filePath string, trackID string) (string, float64, error) {
+	// 创建处理后的文件目录
+	processedDir := filepath.Join("storage", "audio", "processed")
+	if err := os.MkdirAll(processedDir, 0755); err != nil {
+		return "", 0, err
+	}
+	
+	// 获取文件扩展名
+	fileExt := filepath.Ext(filePath)
+	
+	// 创建处理后的文件路径
+	processedFilePath := filepath.Join(processedDir, trackID+fileExt)
+	
+	// 在实际产品中，应该执行：
+	// 1. 标准化音频格式
+	// 2. 优化音质
+	// 3. 生成波形数据
+	// 4. 提取元数据
+	
+	// 简化实现，仅复制文件
+	sourceFile, err := os.Open(filePath)
+	if err != nil {
+		return "", 0, err
+	}
+	defer sourceFile.Close()
+	
+	destFile, err := os.Create(processedFilePath)
+	if err != nil {
+		return "", 0, err
+	}
+	defer destFile.Close()
+	
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return "", 0, err
+	}
+	
+	// 获取文件信息以计算大致时长
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return "", 0, err
+	}
+	
+	// 假设以128kbps比特率估算时长
+	bitRate := 128000.0 // 比特率128kbps
+	fileSize := float64(fileInfo.Size())
+	duration := (fileSize * 8.0) / bitRate
+	
+	return processedFilePath, duration, nil
+}
+
+// 保存用户音轨信息到数据库（模拟实现）
+func saveUserTrack(track UserTrackInfo) error {
+	// 在实际产品中，应将信息保存到数据库
+	// 这里为简化实现，仅打印日志
+	log.Printf("保存用户音轨: ID=%s, 标题=%s, 用户=%s, 课程=%s, 单元=%s",
+		track.ID, track.Title, track.UserID, track.CourseID, track.UnitID)
+	
+	// 可以将信息保存到JSON文件中进行模拟
+	tracksDir := filepath.Join("storage", "tracks")
+	if err := os.MkdirAll(tracksDir, 0755); err != nil {
+		return err
+	}
+	
+	trackData, err := json.Marshal(track)
+	if err != nil {
+		return err
+	}
+	
+	trackFile := filepath.Join(tracksDir, track.ID+".json")
+	return os.WriteFile(trackFile, trackData, 0644)
+}
+
+// 获取用户音轨列表处理程序
+func getUserTracksHandler(c *gin.Context) {
+	// 获取当前已验证的用户ID
+	userID, exists := c.Get("userId")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
+		return
+	}
+
+	// 获取查询参数（可选）
+	courseID := c.Query("courseId")
+	unitID := c.Query("unitId")
+	
+	// 检查是否有权访问课程（如果指定了课程）
+	if courseID != "" {
+		hasAccess, err := userHasAccessToCourse(userID.(string), courseID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "验证用户权限失败"})
+			return
+		}
+		
+		if !hasAccess {
+			c.JSON(http.StatusForbidden, gin.H{"error": "您没有权限访问此课程"})
+			return
+		}
+	}
+	
+	// 获取分页参数
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
+	
+	// 验证分页参数
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	
+	// 获取筛选和排序参数
+	sortBy := c.DefaultQuery("sortBy", "uploadTime")
+	sortOrder := c.DefaultQuery("sortOrder", "desc")
+	filter := c.DefaultQuery("filter", "")
+	
+	// 获取用户音轨列表
+	tracks, total, err := getUserTracks(userID.(string), courseID, unitID, page, pageSize, sortBy, sortOrder, filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取音轨列表失败"})
+		return
+	}
+	
+	// 返回结果
+	c.JSON(http.StatusOK, gin.H{
+		"tracks":    tracks,
+		"total":     total,
+		"page":      page,
+		"pageSize":  pageSize,
+		"totalPages": (total + pageSize - 1) / pageSize,
+	})
+}
+
+// 获取用户音轨列表（模拟实现）
+func getUserTracks(userID, courseID, unitID string, page, pageSize int, sortBy, sortOrder, filter string) ([]UserTrackInfo, int, error) {
+	// 在实际产品中，应从数据库中获取用户音轨列表
+	// 这里为模拟实现，生成一些测试数据
+	
+	// 创建模拟数据
+	tracks := []UserTrackInfo{
+		{
+			ID:          generateUniqueID(),
+			UserID:      userID,
+			CourseID:    "course_1",
+			UnitID:      "unit_1",
+			Title:       "自定义音频 1",
+			Description: "这是我上传的第一个音频文件",
+			FileName:    "audio1.mp3",
+			FilePath:    "storage/audio/processed/track_123456_abcdef.mp3",
+			OriginalFileName: "my_recording.mp3",
+			FileSize:    1024 * 1024 * 3, // 3MB
+			Duration:    180.5,           // 3分钟
+			Format:      "mp3",
+			UploadTime:  time.Now().Add(-24 * time.Hour), // 昨天
+		},
+		{
+			ID:          generateUniqueID(),
+			UserID:      userID,
+			CourseID:    "course_1",
+			UnitID:      "unit_2",
+			Title:       "自定义音频 2",
+			Description: "第二单元练习",
+			FileName:    "audio2.wav",
+			FilePath:    "storage/audio/processed/track_234567_bcdefg.wav",
+			OriginalFileName: "practice_unit2.wav",
+			FileSize:    1024 * 1024 * 5, // 5MB
+			Duration:    240.0,           // 4分钟
+			Format:      "wav",
+			UploadTime:  time.Now().Add(-2 * 24 * time.Hour), // 前天
+		},
+		{
+			ID:          generateUniqueID(),
+			UserID:      userID,
+			CourseID:    "course_2",
+			UnitID:      "unit_1",
+			Title:       "发音练习",
+			Description: "重点词汇发音练习",
+			FileName:    "audio3.ogg",
+			FilePath:    "storage/audio/processed/track_345678_cdefgh.ogg",
+			OriginalFileName: "pronunciation.ogg",
+			FileSize:    1024 * 1024 * 2, // 2MB
+			Duration:    120.25,          // 2分钟
+			Format:      "ogg",
+			UploadTime:  time.Now().Add(-3 * 24 * time.Hour), // 3天前
+		},
+	}
+	
+	// 应用课程和单元筛选
+	var filteredTracks []UserTrackInfo
+	for _, track := range tracks {
+		if (courseID == "" || track.CourseID == courseID) &&
+		   (unitID == "" || track.UnitID == unitID) {
+			// 应用标题筛选
+			if filter == "" || strings.Contains(strings.ToLower(track.Title), strings.ToLower(filter)) {
+				filteredTracks = append(filteredTracks, track)
+			}
+		}
+	}
+	
+	// 记录总数量
+	total := len(filteredTracks)
+	
+	// 排序
+	switch sortBy {
+	case "title":
+		if sortOrder == "asc" {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].Title < filteredTracks[j].Title
+			})
+		} else {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].Title > filteredTracks[j].Title
+			})
+		}
+	case "duration":
+		if sortOrder == "asc" {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].Duration < filteredTracks[j].Duration
+			})
+		} else {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].Duration > filteredTracks[j].Duration
+			})
+		}
+	case "fileSize":
+		if sortOrder == "asc" {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].FileSize < filteredTracks[j].FileSize
+			})
+		} else {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].FileSize > filteredTracks[j].FileSize
+			})
+		}
+	default: // uploadTime
+		if sortOrder == "asc" {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].UploadTime.Before(filteredTracks[j].UploadTime)
+			})
+		} else {
+			sort.Slice(filteredTracks, func(i, j int) bool {
+				return filteredTracks[i].UploadTime.After(filteredTracks[j].UploadTime)
+			})
+		}
+	}
+	
+	// 应用分页
+	startIndex := (page - 1) * pageSize
+	if startIndex >= len(filteredTracks) {
+		return []UserTrackInfo{}, total, nil
+	}
+	
+	endIndex := startIndex + pageSize
+	if endIndex > len(filteredTracks) {
+		endIndex = len(filteredTracks)
+	}
+	
+	return filteredTracks[startIndex:endIndex], total, nil
 }
