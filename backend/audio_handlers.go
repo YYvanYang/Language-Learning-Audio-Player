@@ -1432,3 +1432,516 @@ func getUserTracks(userID, courseID, unitID string, page, pageSize int, sortBy, 
 	
 	return filteredTracks[startIndex:endIndex], total, nil
 }
+
+// 音频质量配置结构
+type AudioQualityConfig struct {
+	Name      string `json:"name"`
+	Bitrate   int    `json:"bitrate"`   // 比特率，单位kbps
+	SampleRate int   `json:"sampleRate"` // 采样率，单位Hz
+	Channels  int    `json:"channels"`  // 声道数
+	Extension string `json:"extension"` // 文件扩展名
+}
+
+// 音频格式请求参数
+type AudioFormatRequest struct {
+	Quality  string `form:"quality"`  // 音频质量 (high/medium/low)
+	Format   string `form:"format"`   // 音频格式 (mp3/ogg/aac)
+	Adaptive bool   `form:"adaptive"` // 是否使用自适应比特率
+}
+
+// 获取自适应音频流处理程序
+func getAdaptiveStreamHandler(c *gin.Context) {
+	// 获取音轨ID
+	trackID := c.Param("trackId")
+	if trackID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少音轨ID"})
+		return
+	}
+
+	// 获取令牌参数
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少访问令牌"})
+		return
+	}
+
+	// 解析和验证令牌
+	accessToken, err := ParseAccessToken(token, getAudioSecretKey())
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的访问令牌"})
+		return
+	}
+
+	// 验证令牌操作类型和有效期
+	if err := accessToken.Validate("stream_audio"); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	// 验证令牌中的音轨ID与请求的音轨ID是否匹配
+	if accessToken.TrackID != trackID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "令牌与请求不匹配"})
+		return
+	}
+
+	// 获取音频格式请求参数
+	var formatReq AudioFormatRequest
+	formatReq.Quality = c.DefaultQuery("quality", "medium")
+	formatReq.Format = c.DefaultQuery("format", "mp3")
+	adaptiveStr := c.DefaultQuery("adaptive", "false")
+	formatReq.Adaptive = adaptiveStr == "true" || adaptiveStr == "1"
+
+	// 验证来源域名（防盗链）
+	referer := c.Request.Header.Get("Referer")
+	if referer != "" {
+		// 从配置读取允许的域名列表
+		allowedDomains := strings.Split(getEnv("ALLOWED_DOMAINS", "localhost:3000,localhost:8080"), ",")
+		refererValid := false
+		
+		for _, domain := range allowedDomains {
+			if strings.Contains(referer, strings.TrimSpace(domain)) {
+				refererValid = true
+				break
+			}
+		}
+		
+		if !refererValid {
+			c.JSON(http.StatusForbidden, gin.H{"error": "非法的资源访问来源"})
+			return
+		}
+	}
+
+	// 构建音频文件路径
+	audioPath, err := getAudioFilePath(accessToken.CourseID, accessToken.UnitID, accessToken.TrackID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "音频文件不存在"})
+		return
+	}
+
+	// 检查客户端网络条件
+	bandwidth := estimateClientBandwidth(c)
+	logClientStats(accessToken.UserID, trackID, c.ClientIP(), bandwidth)
+	
+	// 根据带宽和请求参数确定最佳音频质量
+	qualityConfig := selectBestQuality(bandwidth, formatReq)
+	
+	// 获取或生成对应质量的音频文件
+	adaptiveAudioPath, err := getAdaptiveAudioFile(audioPath, trackID, qualityConfig)
+	if err != nil {
+		// 如果转码失败，回退到原始音频
+		adaptiveAudioPath = audioPath
+		// 记录错误日志
+		log.Printf("音频转码失败: %v, 使用原始音频: %s", err, audioPath)
+	}
+
+	// 打开音频文件
+	audioFile, err := os.Open(adaptiveAudioPath)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法读取音频文件"})
+		return
+	}
+	defer audioFile.Close()
+
+	// 获取文件状态
+	fileInfo, err := audioFile.Stat()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法获取文件信息"})
+		return
+	}
+
+	// 设置内容类型
+	contentType := getContentTypeForFormat(qualityConfig.Extension)
+	c.Header("Content-Type", contentType)
+
+	// 设置安全相关的响应头
+	c.Header("Accept-Ranges", "bytes")
+	c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+	c.Header("Content-Disposition", "inline")
+	c.Header("X-Content-Type-Options", "nosniff")
+	
+	// 对于自适应流，添加音频质量相关的头信息
+	c.Header("X-Audio-Quality", qualityConfig.Name)
+	c.Header("X-Audio-Bitrate", fmt.Sprintf("%d", qualityConfig.Bitrate))
+	c.Header("X-Audio-Format", qualityConfig.Extension)
+
+	// 记录访问日志
+	logAdaptiveAudioAccess(accessToken.UserID, accessToken.TrackID, c.ClientIP(), qualityConfig)
+
+	// 处理范围请求（如果有）
+	rangeHeader := c.Request.Header.Get("Range")
+	if rangeHeader != "" {
+		// 解析范围请求
+		ranges, err := parseRange(rangeHeader, fileInfo.Size())
+		if err != nil {
+			c.Header("Content-Range", fmt.Sprintf("bytes */%d", fileInfo.Size()))
+			c.JSON(http.StatusRequestedRangeNotSatisfiable, gin.H{"error": "请求范围无效"})
+			return
+		}
+
+		// 目前只支持单范围请求
+		if len(ranges) > 1 {
+			c.Header("Content-Range", fmt.Sprintf("bytes */%d", fileInfo.Size()))
+			c.JSON(http.StatusRequestedRangeNotSatisfiable, gin.H{"error": "不支持多范围请求"})
+			return
+		}
+
+		// 优化的范围请求处理
+		serveOptimizedRangeRequest(c, audioFile, fileInfo, ranges[0])
+	} else {
+		// 使用块大小自适应的方式流式传输
+		serveAdaptiveStream(c, audioFile, fileInfo, bandwidth)
+	}
+}
+
+// 根据格式获取内容类型
+func getContentTypeForFormat(format string) string {
+	switch strings.ToLower(format) {
+	case "mp3", ".mp3":
+		return "audio/mpeg"
+	case "ogg", ".ogg":
+		return "audio/ogg"
+	case "aac", ".aac":
+		return "audio/aac"
+	case "wav", ".wav":
+		return "audio/wav"
+	case "flac", ".flac":
+		return "audio/flac"
+	case "m4a", ".m4a":
+		return "audio/mp4"
+	default:
+		return "application/octet-stream"
+	}
+}
+
+// 估计客户端带宽（基于请求头和连接信息）
+func estimateClientBandwidth(c *gin.Context) int {
+	// 从请求头获取带宽信息（如果有）
+	// 注意：这些是非标准头，但一些CDN和浏览器扩展可能提供
+	downlinkStr := c.Request.Header.Get("Downlink")
+	if downlinkStr != "" {
+		if downlink, err := strconv.Atoi(downlinkStr); err == nil && downlink > 0 {
+			return downlink // 返回客户端提供的带宽估计（kbps）
+		}
+	}
+	
+	// 检查ECT（有效连接类型）头
+	ect := c.Request.Header.Get("ECT")
+	switch ect {
+	case "4g":
+		return 4000 // 假设4G约为4Mbps
+	case "3g":
+		return 1000 // 假设3G约为1Mbps
+	case "2g":
+		return 250 // 假设2G约为250kbps
+	case "slow-2g":
+		return 100 // 假设慢2G约为100kbps
+	}
+	
+	// 检查保存的客户端统计数据
+	// 在实际系统中，应从数据库或缓存获取之前的带宽统计
+	clientIP := c.ClientIP()
+	bandwidth := getClientBandwidthStats(clientIP)
+	if bandwidth > 0 {
+		return bandwidth
+	}
+	
+	// 默认假设值 - 1Mbps
+	return 1000
+}
+
+// 获取客户端的带宽统计（模拟实现）
+func getClientBandwidthStats(clientIP string) int {
+	// 在实际产品中，应从数据库或缓存获取
+	// 这里简单返回随机值作为示例
+	if rand.Intn(2) == 0 {
+		return 0 // 表示没有历史数据
+	}
+	
+	// 返回一个合理的带宽值（250kbps - 10Mbps）
+	return 250 + rand.Intn(9750)
+}
+
+// 记录客户端统计信息
+func logClientStats(userID, trackID, clientIP string, bandwidth int) {
+	// 在实际产品中，应将日志写入数据库
+	log.Printf("客户端统计: 用户ID=%s, 音轨ID=%s, IP=%s, 带宽=%dkbps, 时间=%s",
+		userID, trackID, clientIP, bandwidth, time.Now().Format(time.RFC3339))
+}
+
+// 记录自适应音频访问
+func logAdaptiveAudioAccess(userID, trackID, clientIP string, config AudioQualityConfig) {
+	// 在实际产品中，应将日志写入数据库
+	log.Printf("自适应音频访问: 用户ID=%s, 音轨ID=%s, IP=%s, 质量=%s, 比特率=%d, 时间=%s",
+		userID, trackID, clientIP, config.Name, config.Bitrate, time.Now().Format(time.RFC3339))
+}
+
+// 根据带宽和请求参数选择最佳音频质量
+func selectBestQuality(bandwidth int, req AudioFormatRequest) AudioQualityConfig {
+	// 定义不同质量级别的配置
+	qualityConfigs := map[string][]AudioQualityConfig{
+		"mp3": {
+			{Name: "high", Bitrate: 320, SampleRate: 44100, Channels: 2, Extension: "mp3"},
+			{Name: "medium", Bitrate: 192, SampleRate: 44100, Channels: 2, Extension: "mp3"},
+			{Name: "low", Bitrate: 128, SampleRate: 44100, Channels: 2, Extension: "mp3"},
+			{Name: "very_low", Bitrate: 64, SampleRate: 22050, Channels: 1, Extension: "mp3"},
+		},
+		"ogg": {
+			{Name: "high", Bitrate: 256, SampleRate: 44100, Channels: 2, Extension: "ogg"},
+			{Name: "medium", Bitrate: 160, SampleRate: 44100, Channels: 2, Extension: "ogg"},
+			{Name: "low", Bitrate: 96, SampleRate: 44100, Channels: 2, Extension: "ogg"},
+			{Name: "very_low", Bitrate: 48, SampleRate: 22050, Channels: 1, Extension: "ogg"},
+		},
+		"aac": {
+			{Name: "high", Bitrate: 256, SampleRate: 44100, Channels: 2, Extension: "aac"},
+			{Name: "medium", Bitrate: 160, SampleRate: 44100, Channels: 2, Extension: "aac"},
+			{Name: "low", Bitrate: 96, SampleRate: 44100, Channels: 2, Extension: "aac"},
+			{Name: "very_low", Bitrate: 48, SampleRate: 22050, Channels: 1, Extension: "aac"},
+		},
+	}
+	
+	// 使用默认格式如果请求的格式不支持
+	format := req.Format
+	if _, exists := qualityConfigs[format]; !exists {
+		format = "mp3" // 默认回退到MP3
+	}
+	
+	// 如果请求自适应比特率
+	if req.Adaptive {
+		// 根据带宽自动选择合适的质量
+		for _, config := range qualityConfigs[format] {
+			// 假设至少需要比特率的1.2倍带宽来流畅播放
+			if float64(bandwidth) >= float64(config.Bitrate)*1.2 {
+				return config
+			}
+		}
+		
+		// 如果带宽很低，使用最低质量
+		return qualityConfigs[format][len(qualityConfigs[format])-1]
+	} else {
+		// 使用用户指定的质量
+		quality := req.Quality
+		
+		// 找到指定质量的配置
+		for _, config := range qualityConfigs[format] {
+			if config.Name == quality {
+				return config
+			}
+		}
+		
+		// 默认使用中等质量
+		for _, config := range qualityConfigs[format] {
+			if config.Name == "medium" {
+				return config
+			}
+		}
+		
+		// 如果没有找到指定质量，使用第一个可用配置
+		return qualityConfigs[format][0]
+	}
+}
+
+// 获取或生成适应性音频文件
+func getAdaptiveAudioFile(srcPath, trackID string, quality AudioQualityConfig) (string, error) {
+	// 生成转码后文件路径
+	baseDir := filepath.Join("storage", "audio", "transcoded")
+	qualityDir := filepath.Join(baseDir, quality.Name)
+	
+	// 确保目录存在
+	if err := os.MkdirAll(qualityDir, 0755); err != nil {
+		return "", err
+	}
+	
+	// 生成文件名
+	fileName := fmt.Sprintf("%s_%d_%d_%d.%s", 
+		trackID, 
+		quality.Bitrate, 
+		quality.SampleRate, 
+		quality.Channels,
+		quality.Extension)
+	
+	destPath := filepath.Join(qualityDir, fileName)
+	
+	// 检查转码后的文件是否已存在
+	if _, err := os.Stat(destPath); err == nil {
+		// 文件已存在，直接返回
+		return destPath, nil
+	}
+	
+	// 需要转码 - 在实际系统中，应使用FFmpeg或其他音频处理库
+	// 这里为简化实现，使用模拟转码
+	err := transcodeAudio(srcPath, destPath, quality)
+	if err != nil {
+		return "", err
+	}
+	
+	return destPath, nil
+}
+
+// 模拟音频转码（在实际系统中应使用FFmpeg）
+func transcodeAudio(srcPath, destPath string, quality AudioQualityConfig) error {
+	// 注意：这是模拟的转码函数，实际产品中应调用FFmpeg
+	
+	// 在实际产品中，这里应使用类似以下的FFmpeg调用:
+	// ffmpeg -i {srcPath} -c:a libmp3lame -b:a {quality.Bitrate}k -ar {quality.SampleRate} -ac {quality.Channels} {destPath}
+	
+	// 简化实现，仅复制文件并模拟转码延迟
+	sourceFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+	
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+	
+	// 复制文件内容
+	_, err = io.Copy(destFile, sourceFile)
+	if err != nil {
+		return err
+	}
+	
+	// 模拟转码延迟
+	time.Sleep(100 * time.Millisecond)
+	
+	// 记录转码日志
+	log.Printf("音频转码（模拟）: 源=%s, 目标=%s, 比特率=%dkbps, 采样率=%dHz, 声道数=%d",
+		srcPath, destPath, quality.Bitrate, quality.SampleRate, quality.Channels)
+	
+	return nil
+}
+
+// 优化的范围请求处理
+func serveOptimizedRangeRequest(c *gin.Context, file *os.File, fileInfo os.FileInfo, r httpRange) {
+	// 设置内容范围头
+	c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", r.Start, r.End, fileInfo.Size()))
+	c.Header("Content-Length", strconv.FormatInt(r.Length, 10))
+	c.Status(http.StatusPartialContent)
+
+	// 移动到范围起始位置
+	_, err := file.Seek(r.Start, io.SeekStart)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无法设置文件位置"})
+		return
+	}
+
+	// 使用适当的缓冲区大小来优化传输
+	// 对于较大的范围，使用更大的缓冲区
+	bufferSize := 4096 // 4KB 默认缓冲区
+	if r.Length > 1024*1024 { // 如果大于1MB
+		bufferSize = 16384 // 16KB 缓冲区
+	}
+	
+	buffer := make([]byte, bufferSize)
+	bytesRemaining := r.Length
+	
+	// 使用流式传输避免内存过载
+	for bytesRemaining > 0 {
+		readSize := int64(len(buffer))
+		if bytesRemaining < readSize {
+			readSize = bytesRemaining
+		}
+		
+		n, err := file.Read(buffer[:readSize])
+		if err != nil && err != io.EOF {
+			log.Printf("读取文件错误: %v", err)
+			break
+		}
+		
+		if n == 0 {
+			break // 文件结束
+		}
+		
+		_, err = c.Writer.Write(buffer[:n])
+		if err != nil {
+			log.Printf("写入响应错误: %v", err)
+			break
+		}
+		
+		bytesRemaining -= int64(n)
+	}
+}
+
+// 自适应流式传输
+func serveAdaptiveStream(c *gin.Context, file *os.File, fileInfo os.FileInfo, bandwidth int) {
+	// 设置内容长度头
+	c.Header("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
+	
+	// 根据带宽调整缓冲区大小和流速率
+	bufferSize := determineOptimalBufferSize(bandwidth)
+	
+	// 确定适当的写入延迟（如果需要限速，防止过度缓冲）
+	writeDelay := determineWriteDelay(bandwidth, bufferSize)
+	
+	buffer := make([]byte, bufferSize)
+	bytesSent := int64(0)
+	bytesTotal := fileInfo.Size()
+	
+	// 使用流式传输避免内存过载
+	for bytesSent < bytesTotal {
+		n, err := file.Read(buffer)
+		if err != nil && err != io.EOF {
+			log.Printf("读取文件错误: %v", err)
+			break
+		}
+		
+		if n == 0 {
+			break // 文件结束
+		}
+		
+		// 写入响应
+		_, err = c.Writer.Write(buffer[:n])
+		if err != nil {
+			log.Printf("写入响应错误: %v", err)
+			break
+		}
+		
+		bytesSent += int64(n)
+		
+		// 如果需要限制速率，添加适当延迟
+		if writeDelay > 0 {
+			time.Sleep(writeDelay)
+		}
+		
+		// 刷新写入器，确保数据发送给客户端
+		c.Writer.Flush()
+	}
+}
+
+// 根据带宽确定最佳缓冲区大小
+func determineOptimalBufferSize(bandwidth int) int {
+	// 根据带宽调整缓冲区大小
+	if bandwidth < 256 { // 低于256kbps
+		return 4096 // 4KB
+	} else if bandwidth < 1000 { // 低于1Mbps
+		return 8192 // 8KB
+	} else if bandwidth < 5000 { // 低于5Mbps
+		return 16384 // 16KB
+	} else {
+		return 32768 // 32KB，高带宽
+	}
+}
+
+// 确定写入延迟，用于限制传输速率（如果需要）
+func determineWriteDelay(bandwidth int, bufferSize int) time.Duration {
+	// 计算每个缓冲区需要的发送时间（以毫秒为单位）
+	// 公式: (缓冲区大小(bytes) * 8 / 带宽(kbps)) * 1000
+
+	// 注意：在大多数情况下，我们不需要人为限制速度，网络本身会自然限制
+	// 这里的延迟主要用于非常高带宽场景，防止服务器过载
+	
+	// 如果带宽高于10Mbps，可能需要一些限制来防止服务器过载
+	if bandwidth > 10000 {
+		// 限制在10Mbps
+		bytesPerSecond := 10000 * 1024 / 8 // 转换为每秒字节数
+		delayMs := float64(bufferSize) / float64(bytesPerSecond) * 1000
+		return time.Duration(delayMs) * time.Millisecond
+	}
+	
+	// 对于大多数情况，不需要额外延迟
+	return 0
+}

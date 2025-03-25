@@ -21,6 +21,9 @@ func main() {
 		log.Println("No .env file found, using environment variables")
 	}
 
+	// 初始化随机数种子
+	initRandomSeed()
+
 	// 设置Gin模式
 	if os.Getenv("GIN_MODE") == "release" {
 		gin.SetMode(gin.ReleaseMode)
@@ -48,6 +51,9 @@ func main() {
 		
 		// 音频流式传输 - 带令牌验证
 		audioRoutes.GET("/stream/:trackId", streamAudioHandler)
+		
+		// 自适应音频流式传输 - 带令牌验证和自动质量选择
+		audioRoutes.GET("/adaptive/:trackId", getAdaptiveStreamHandler)
 		
 		// 音频元数据
 		audioRoutes.GET("/metadata/:trackId", AuthMiddleware(), getAudioMetadataHandler)
@@ -143,13 +149,24 @@ func main() {
 	log.Println("Server exited")
 }
 
+// 初始化随机数种子
+func initRandomSeed() {
+	time.Now().UnixNano()
+}
+
 // 创建必要的存储目录
 func createStorageDirectories() {
 	dirs := []string{
 		"storage/audio",
 		"storage/audio/uploads",
 		"storage/audio/processed",
+		"storage/audio/transcoded", // 新增的转码文件目录
+		"storage/audio/transcoded/high",
+		"storage/audio/transcoded/medium",
+		"storage/audio/transcoded/low",
+		"storage/audio/transcoded/very_low",
 		"storage/temp",
+		"storage/tracks",
 	}
 
 	for _, dir := range dirs {
