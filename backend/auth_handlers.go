@@ -9,6 +9,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
+	
+	"github.com/your-username/language-learning-audio-player/backend/database"
+	"github.com/your-username/language-learning-audio-player/backend/database/models"
 )
 
 // 登录请求结构
@@ -17,13 +20,19 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
-// 用户信息结构
-type User struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	Name      string    `json:"name"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"createdAt"`
+// 注册请求结构
+type RegisterRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=8"`
+	Name     string `json:"name" binding:"required"`
+}
+
+// JWT声明结构
+type JWTClaims struct {
+	UserID string `json:"userId"`
+	Email  string `json:"email"`
+	Role   string `json:"role"`
+	jwt.RegisteredClaims
 }
 
 // 登录处理程序
@@ -34,25 +43,40 @@ func loginHandler(c *gin.Context) {
 		return
 	}
 
-	// 验证用户凭据
-	user, err := authenticateUser(req.Email, req.Password)
+	// 创建用户仓库
+	userRepo := models.NewUserRepository(database.DB)
+
+	// 查找用户
+	user, err := userRepo.GetByEmail(req.Email)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "邮箱或密码错误"})
 		return
 	}
 
-	// 创建会话令牌
-	token, err := createSessionToken(user)
+	// 验证密码
+	if !models.VerifyPassword(user.PasswordHash, req.Password) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "邮箱或密码错误"})
+		return
+	}
+
+	// 更新最后登录时间
+	if err := userRepo.UpdateLastLogin(user.ID); err != nil {
+		// 只记录错误，不影响登录流程
+		fmt.Printf("更新最后登录时间失败: %v\n", err)
+	}
+
+	// 创建JWT令牌
+	token, err := createJWTToken(user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建会话失败"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建令牌失败"})
 		return
 	}
 
 	// 设置Cookie
 	c.SetCookie(
-		"session",                   // 名称
+		"auth_token",                // 名称
 		token,                       // 值
-		int(time.Hour*24),           // 最大寿命（秒）
+		int(time.Hour*24*7),         // 最大寿命（秒）
 		"/",                         // 路径
 		getEnv("COOKIE_DOMAIN", ""), // 域名
 		getEnv("COOKIE_SECURE", "false") == "true", // 仅HTTPS
@@ -62,133 +86,158 @@ func loginHandler(c *gin.Context) {
 	// 返回用户信息（不包含敏感数据）
 	c.JSON(http.StatusOK, gin.H{
 		"message": "登录成功",
-		"user": User{
-			ID:    user.ID,
-			Email: user.Email,
-			Name:  user.Name,
-			Role:  user.Role,
-		},
-	})
-}
-
-// 会话验证处理程序
-func validateSessionHandler(c *gin.Context) {
-	// 从Cookie中获取会话令牌
-	token, err := c.Cookie("session")
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"valid": false})
-		return
-	}
-
-	// 验证会话令牌
-	claims := &Claims{}
-	parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
-		return []byte(getSecretKey()), nil
-	})
-
-	if err != nil || !parsedToken.Valid {
-		c.JSON(http.StatusUnauthorized, gin.H{"valid": false})
-		return
-	}
-
-	// 返回验证结果和用户信息
-	c.JSON(http.StatusOK, gin.H{
-		"valid": true,
 		"user": gin.H{
-			"id":    claims.UserID,
-			"email": claims.Email,
+			"id":    user.ID,
+			"email": user.Email,
+			"name":  user.Name,
+			"role":  user.Role,
 		},
+		"token": token,
 	})
 }
 
-// 退出登录处理程序
-func logoutHandler(c *gin.Context) {
-	// 清除Cookie
+// 注册处理程序
+func registerHandler(c *gin.Context) {
+	var req RegisterRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求格式"})
+		return
+	}
+
+	// 创建用户仓库
+	userRepo := models.NewUserRepository(database.DB)
+
+	// 检查邮箱是否已存在
+	exists, err := userRepo.CheckEmailExists(req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+
+	if exists {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱已被注册"})
+		return
+	}
+
+	// 生成密码哈希
+	passwordHash, err := models.HashPassword(req.Password)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码处理失败"})
+		return
+	}
+
+	// 创建用户
+	user := &models.User{
+		Email:        req.Email,
+		PasswordHash: passwordHash,
+		Name:         req.Name,
+		Role:         "user", // 默认角色
+		Active:       true,   // 默认活跃状态
+	}
+
+	if err := userRepo.Create(user); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建用户失败"})
+		return
+	}
+
+	// 创建JWT令牌
+	token, err := createJWTToken(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建令牌失败"})
+		return
+	}
+
+	// 设置Cookie
 	c.SetCookie(
-		"session",                   // 名称
-		"",                          // 值
-		-1,                          // 最大寿命（负数表示立即过期）
+		"auth_token",                // 名称
+		token,                       // 值
+		int(time.Hour*24*7),         // 最大寿命（秒）
 		"/",                         // 路径
 		getEnv("COOKIE_DOMAIN", ""), // 域名
 		getEnv("COOKIE_SECURE", "false") == "true", // 仅HTTPS
 		true, // HTTP专用
 	)
 
-	c.JSON(http.StatusOK, gin.H{"message": "退出登录成功"})
+	// 返回用户信息
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "注册成功",
+		"user": gin.H{
+			"id":    user.ID,
+			"email": user.Email,
+			"name":  user.Name,
+			"role":  user.Role,
+		},
+		"token": token,
+	})
 }
 
-// 创建会话令牌
-func createSessionToken(user *User) (string, error) {
-	// 设置令牌有效期（24小时）
-	expirationTime := time.Now().Add(24 * time.Hour)
+// 会话验证处理程序
+func validateTokenHandler(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	userRepo := models.NewUserRepository(database.DB)
+	
+	user, err := userRepo.GetByID(userID.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效会话"})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"user": gin.H{
+			"id":    user.ID,
+			"email": user.Email,
+			"name":  user.Name,
+			"role":  user.Role,
+		},
+	})
+}
 
-	// 创建JWT声明
-	claims := &Claims{
+// 登出处理程序
+func logoutHandler(c *gin.Context) {
+	// 清除Cookie
+	c.SetCookie(
+		"auth_token",                // 名称
+		"",                          // 值（空）
+		-1,                          // 最大寿命（立即过期）
+		"/",                         // 路径
+		getEnv("COOKIE_DOMAIN", ""), // 域名
+		getEnv("COOKIE_SECURE", "false") == "true", // 仅HTTPS
+		true, // HTTP专用
+	)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "已成功登出",
+	})
+}
+
+// 创建JWT令牌
+func createJWTToken(user *models.User) (string, error) {
+	// 设置过期时间
+	expiresAt := time.Now().Add(time.Hour * 24 * 7) // 7天有效期
+
+	// 创建声明
+	claims := JWTClaims{
 		UserID: user.ID,
 		Email:  user.Email,
+		Role:   user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
+			Issuer:    "language-learning-audio-player",
+			Subject:   user.ID,
 		},
 	}
 
-	// 创建JWT令牌
+	// 创建令牌
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	// 签名令牌
-	tokenString, err := token.SignedString([]byte(getSecretKey()))
+	// 使用密钥签名令牌
+	jwtSecretKey := getEnv("JWT_SECRET", "your-default-secret-key-replace-in-production")
+	tokenString, err := token.SignedString([]byte(jwtSecretKey))
 	if err != nil {
 		return "", err
 	}
 
 	return tokenString, nil
-}
-
-// 用户认证（模拟数据库查询）
-func authenticateUser(email, password string) (*User, error) {
-	// 在实际应用中，这里应该从数据库查询用户信息并验证密码
-	// 现在使用模拟数据作为示例
-
-	// 模拟用户数据
-	mockUsers := map[string]struct {
-		ID           string
-		PasswordHash string
-		Name         string
-		Role         string
-	}{
-		"user@example.com": {
-			ID:           "usr_123456",
-			PasswordHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", // 密码：password123
-			Name:         "测试用户",
-			Role:         "student",
-		},
-		"teacher@example.com": {
-			ID:           "usr_789012",
-			PasswordHash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", // 密码：password123
-			Name:         "测试教师",
-			Role:         "teacher",
-		},
-	}
-
-	// 查找用户
-	mockUser, exists := mockUsers[email]
-	if !exists {
-		return nil, fmt.Errorf("用户不存在")
-	}
-
-	// 验证密码
-	err := bcrypt.CompareHashAndPassword([]byte(mockUser.PasswordHash), []byte(password))
-	if err != nil {
-		return nil, fmt.Errorf("密码错误")
-	}
-
-	// 返回用户信息
-	return &User{
-		ID:        mockUser.ID,
-		Email:     email,
-		Name:      mockUser.Name,
-		Role:      mockUser.Role,
-		CreatedAt: time.Now().Add(-30 * 24 * time.Hour), // 假设用户是30天前创建的
-	}, nil
 }

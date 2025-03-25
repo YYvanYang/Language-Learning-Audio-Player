@@ -13,6 +13,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+
+	"github.com/your-username/language-learning-audio-player/backend/database"
+	_ "github.com/your-username/language-learning-audio-player/backend/database/migrations" // 引入所有迁移
 )
 
 func main() {
@@ -23,6 +26,17 @@ func main() {
 
 	// 初始化随机数种子
 	initRandomSeed()
+
+	// 初始化数据库连接
+	if err := database.InitDB(); err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer database.CloseDB()
+
+	// 执行数据库迁移
+	if err := database.RunMigrations(); err != nil {
+		log.Fatalf("Failed to run migrations: %v", err)
+	}
 
 	// 设置Gin模式
 	if os.Getenv("GIN_MODE") == "release" {
