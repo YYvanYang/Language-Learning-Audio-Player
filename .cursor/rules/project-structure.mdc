@@ -1,0 +1,164 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: 项目结构和文件位置规范
+globs: "**/*"
+alwaysApply: true
+---
+
+# 项目结构规范
+
+本文档规定了语言学习音频播放器项目的结构规范和文件位置要求，以避免常见错误。
+
+## 目录结构
+
+项目使用以下主要目录结构：
+
+```
+Language-Learning-Audio-Player/
+├── web-client/              # 前端代码（Next.js应用）
+│   ├── app/                 # Next.js App Router目录
+│   ├── components/          # React组件
+│   ├── lib/                 # 工具库和钩子函数
+│   │   └── audio/           # 音频处理相关工具
+│   │       ├── wasm-loader.js  # WebAssembly加载器（已存在）
+│   │       └── ...
+│   ├── public/              # 静态资源
+│   │   └── wasm/            # WebAssembly编译输出（自动生成）
+│   └── ...
+├── backend/                 # Go后端代码
+│   ├── handlers/            # HTTP处理函数
+│   ├── database/            # 数据库相关代码
+│   └── ...
+├── RustWebAssembly/         # Rust WebAssembly代码
+│   ├── audio_processor/     # 主要Rust音频处理库
+│   │   ├── src/             # 源代码目录
+│   │   │   └── lib.rs       # 主入口（唯一的lib.rs）
+│   │   └── Cargo.toml       # Rust项目配置
+│   ├── dist/                # 构建输出目录（自动生成）
+│   ├── wasm-build.ps1       # PowerShell构建脚本
+│   └── ...
+└── ...
+```
+
+## 常见错误防范
+
+### 1. 文件重复创建
+
+<rule>
+name: prevent_duplicate_files
+description: 防止创建已存在的文件
+filters:
+  - type: event
+    pattern: "file_create"
+  - type: file_path
+    pattern: ".*\\.(js|rs|go|tsx|jsx)$"
+
+actions:
+  - type: check
+    condition: |
+      # 检查是否创建了重复文件
+      FILE=$context.event.file
+      BASENAME=$(basename "$FILE")
+      
+      # 特定检查：wasm-loader.js
+      if [[ "$BASENAME" == "wasm-loader.js" && "$FILE" != "web-client/lib/audio/wasm-loader.js" ]]; then
+        echo "警告: wasm-loader.js 已经存在于 web-client/lib/audio/ 目录中"
+        exit 1
+      fi
+      
+      # 特定检查：lib.rs 文件只应存在于RustWebAssembly/audio_processor/src/lib.rs
+      if [[ "$BASENAME" == "lib.rs" && "$FILE" != "RustWebAssembly/audio_processor/src/lib.rs" ]]; then
+        echo "警告: lib.rs 应只存在于 RustWebAssembly/audio_processor/src/ 目录中"
+        exit 1
+      fi
+      
+      exit 0
+    message: |
+      您正在创建的文件可能已存在于项目的其他位置。请先检查项目结构，查找现有文件:
+      
+      - wasm-loader.js 应位于 web-client/lib/audio/
+      - Rust lib.rs 应只位于 RustWebAssembly/audio_processor/src/
+      - 避免创建重复功能的文件
+</rule>
+
+### 2. 目录路径错误
+
+<rule>
+name: correct_directory_paths
+description: 确保使用正确的目录路径
+filters:
+  - type: content
+    pattern: "frontend|Frontend"
+  - type: file_path
+    pattern: ".*\\.(js|ts|ps1|md)$"
+
+actions:
+  - type: check
+    condition: |
+      # 检查是否使用了错误的目录名称
+      CONTENT=$context.file_content
+      
+      if [[ "$CONTENT" =~ "frontend" || "$CONTENT" =~ "Frontend" ]]; then
+        echo "可能使用了错误的目录名称 'frontend'，正确名称应为 'web-client'"
+        exit 1
+      fi
+      
+      exit 0
+    message: |
+      发现可能使用了错误的目录名称:
+      
+      - 前端目录应为 'web-client' 而非 'frontend'
+      - 请检查并修正目录路径引用
+</rule>
+
+### 3. 项目结构检查
+
+<rule>
+name: structure_check_before_implementation
+description: 实现功能前检查项目结构
+filters:
+  - type: event
+    pattern: "user_message"
+  - type: content
+    pattern: "实现|创建|添加|编写"
+
+actions:
+  - type: suggest
+    message: |
+      在开始实现功能前，请先检查项目结构:
+      
+      1. 确认功能是否已存在，避免重复实现
+      2. 查看正确的目录和文件位置:
+         - 前端代码应位于 web-client/ 目录
+         - Rust WebAssembly代码应位于 RustWebAssembly/audio_processor/ 目录
+         - Go后端代码应位于 backend/ 目录
+      3. 复用现有代码和组件而不是重新创建
+      4. 遵循项目的命名和结构约定
+</rule>
+
+## 项目特定路径规范
+
+为确保项目一致性，请遵循以下规范：
+
+1. **WebAssembly相关文件**:
+   - Rust源代码位于 `RustWebAssembly/audio_processor/src/`
+   - 构建脚本为 `RustWebAssembly/wasm-build.ps1`
+   - WebAssembly加载器位于 `web-client/lib/audio/wasm-loader.js`
+   - 编译输出到 `web-client/public/wasm/`
+
+2. **前端文件位置**:
+   - 所有React组件位于 `web-client/components/`
+   - 页面组件位于 `web-client/app/`
+   - 工具库位于 `web-client/lib/`
+   - 音频处理相关代码位于 `web-client/lib/audio/`
+
+3. **后端文件位置**:
+   - HTTP处理函数位于 `backend/handlers/`
+   - 数据库相关代码位于 `backend/database/`
+   - 主程序入口为 `backend/main.go`
+
+请在开发前先检查相关文件和目录是否已存在，避免重复实现功能或创建冗余文件。
