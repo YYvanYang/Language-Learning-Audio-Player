@@ -6,26 +6,117 @@ let processingManagerInstance = null;
 let audioContext = null;
 
 /**
- * 确保音频上下文已创建
+ * 检测浏览器对 AudioContext 的支持情况
+ * @returns {Object} 支持信息对象
+ */
+export function detectAudioContextSupport() {
+  return {
+    standardContext: typeof window !== 'undefined' && 'AudioContext' in window,
+    webkitContext: typeof window !== 'undefined' && 'webkitAudioContext' in window,
+    audioWorklet: typeof window !== 'undefined' && 
+                  ((window.AudioContext && 'audioWorklet' in AudioContext.prototype) ||
+                   (window.webkitAudioContext && 'audioWorklet' in webkitAudioContext.prototype)),
+    offlineContext: typeof window !== 'undefined' && 'OfflineAudioContext' in window
+  };
+}
+
+/**
+ * 确保音频上下文已创建，处理跨浏览器兼容性
+ * @param {Object} options - 音频上下文选项
+ * @param {number} options.sampleRate - 采样率（可选，默认使用浏览器默认值）
+ * @param {boolean} options.latencyHint - 延迟提示（可选，默认为'interactive'）
  * @returns {AudioContext} 音频上下文
  */
-export function ensureAudioContext() {
+export function ensureAudioContext(options = {}) {
   if (!audioContext) {
     try {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      audioContext = new AudioContext();
+      const support = detectAudioContextSupport();
+      
+      if (!support.standardContext && !support.webkitContext) {
+        throw new Error('您的浏览器不支持 Web Audio API');
+      }
+      
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      
+      // 构建音频上下文选项
+      const contextOptions = {};
+      
+      // 仅当支持且提供了选项时添加
+      if (options.sampleRate) {
+        contextOptions.sampleRate = options.sampleRate;
+      }
+      
+      if (options.latencyHint) {
+        contextOptions.latencyHint = options.latencyHint;
+      } else {
+        contextOptions.latencyHint = 'interactive'; // 默认为交互式延迟
+      }
+      
+      audioContext = new AudioContextClass(contextOptions);
+      
+      // 在iOS Safari上需要特殊处理
+      if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        // 记录iOS上下文状态，以便进行特殊处理
+        audioContext._isIOS = true;
+        
+        // iOS 设备可能需要静音处理
+        const silentSource = audioContext.createOscillator();
+        silentSource.frequency.value = 0;
+        silentSource.connect(audioContext.destination);
+        silentSource.start(0);
+        silentSource.stop(0.1);
+      }
+      
+      // 记录当前支持的功能
+      audioContext._support = {
+        audioWorklet: support.audioWorklet
+      };
+      
+      console.log(`AudioContext created successfully. 
+        State: ${audioContext.state}, 
+        Sample Rate: ${audioContext.sampleRate}, 
+        BaseLatency: ${audioContext.baseLatency || 'not supported'}, 
+        AudioWorklet Support: ${support.audioWorklet ? 'Yes' : 'No'}`);
     } catch (error) {
       console.error('Failed to create AudioContext:', error);
-      throw new Error('您的浏览器不支持 Web Audio API');
+      throw new Error('无法创建音频上下文: ' + error.message);
     }
   }
   
-  // 如果上下文被暂停，尝试恢复
-  if (audioContext.state === 'suspended') {
-    audioContext.resume();
+  return audioContext;
+}
+
+/**
+ * 尝试恢复已暂停的音频上下文
+ * @returns {Promise<boolean>} 恢复是否成功
+ */
+export async function resumeAudioContext() {
+  if (!audioContext) {
+    return false;
   }
   
-  return audioContext;
+  if (audioContext.state === 'suspended') {
+    try {
+      // 处理iOS Safari的特殊情况
+      if (audioContext._isIOS) {
+        // iOS需要播放静音音频以解锁音频上下文
+        const silentBuffer = audioContext.createBuffer(1, 1, 22050);
+        const source = audioContext.createBufferSource();
+        source.buffer = silentBuffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+      }
+      
+      await audioContext.resume();
+      console.log(`AudioContext resumed. Current state: ${audioContext.state}`);
+      return audioContext.state === 'running';
+    } catch (error) {
+      console.error('Failed to resume AudioContext:', error);
+      return false;
+    }
+  }
+  
+  return audioContext.state === 'running';
 }
 
 /**

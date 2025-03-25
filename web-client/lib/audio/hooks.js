@@ -3,6 +3,207 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ensureAudioContext, setupAudioProcessingChain, getWaveformData, getFrequencyData } from './processing';
 
 /**
+ * 音频上下文状态管理与自动恢复钩子
+ * 处理音频上下文的创建、状态监控和自动恢复
+ * @returns {Object} 包含音频上下文状态和控制函数的对象
+ */
+export function useAudioContextState() {
+  const [context, setContext] = useState(null);
+  const [state, setState] = useState('suspended');
+  const [isAutoResumeEnabled, setIsAutoResumeEnabled] = useState(true);
+  const userInteractionRef = useRef(false);
+
+  // 创建音频上下文
+  const createContext = useCallback(() => {
+    try {
+      const ctx = ensureAudioContext();
+      setContext(ctx);
+      setState(ctx.state);
+      return ctx;
+    } catch (error) {
+      console.error('Failed to create AudioContext:', error);
+      return null;
+    }
+  }, []);
+
+  // 恢复音频上下文
+  const resumeContext = useCallback(async () => {
+    if (!context) return false;
+    
+    try {
+      if (context.state === 'suspended') {
+        await context.resume();
+        setState(context.state);
+        return context.state === 'running';
+      }
+      return context.state === 'running';
+    } catch (error) {
+      console.error('Failed to resume AudioContext:', error);
+      return false;
+    }
+  }, [context]);
+
+  // 暂停音频上下文
+  const suspendContext = useCallback(async () => {
+    if (!context) return false;
+    
+    try {
+      if (context.state === 'running') {
+        await context.suspend();
+        setState(context.state);
+        return context.state === 'suspended';
+      }
+      return context.state === 'suspended';
+    } catch (error) {
+      console.error('Failed to suspend AudioContext:', error);
+      return false;
+    }
+  }, [context]);
+
+  // 关闭音频上下文
+  const closeContext = useCallback(async () => {
+    if (!context) return false;
+    
+    try {
+      if (context.state !== 'closed') {
+        await context.close();
+        setState('closed');
+        setContext(null);
+        return true;
+      }
+      return true;
+    } catch (error) {
+      console.error('Failed to close AudioContext:', error);
+      return false;
+    }
+  }, [context]);
+
+  // 监听上下文状态变化
+  useEffect(() => {
+    if (!context) return;
+    
+    const handleStateChange = () => {
+      setState(context.state);
+    };
+    
+    // 添加状态变化事件监听器
+    context.addEventListener('statechange', handleStateChange);
+    
+    return () => {
+      context.removeEventListener('statechange', handleStateChange);
+    };
+  }, [context]);
+
+  // 设置用户交互监听器来自动恢复上下文
+  useEffect(() => {
+    if (!context || !isAutoResumeEnabled) return;
+    
+    const userInteractionEvents = [
+      'click', 'touchstart', 'keydown', 'touchend',
+      'pointerdown', 'mousedown'
+    ];
+    
+    const handleUserInteraction = () => {
+      // 记录用户交互
+      userInteractionRef.current = true;
+      
+      // 尝试恢复音频上下文
+      if (context.state === 'suspended') {
+        resumeContext().catch(error => {
+          console.warn('Failed to automatically resume AudioContext:', error);
+        });
+      }
+      
+      // 只需处理一次用户交互
+      if (userInteractionRef.current) {
+        userInteractionEvents.forEach(eventType => {
+          window.removeEventListener(eventType, handleUserInteraction);
+        });
+      }
+    };
+    
+    // 添加多种用户交互事件监听器
+    userInteractionEvents.forEach(eventType => {
+      window.addEventListener(eventType, handleUserInteraction, { once: false });
+    });
+    
+    return () => {
+      // 清理事件监听器
+      userInteractionEvents.forEach(eventType => {
+        window.removeEventListener(eventType, handleUserInteraction);
+      });
+    };
+  }, [context, isAutoResumeEnabled, resumeContext]);
+
+  // 处理页面可见性变化
+  useEffect(() => {
+    if (!context || !isAutoResumeEnabled) return;
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && userInteractionRef.current) {
+        // 页面变为可见时恢复上下文
+        if (context.state === 'suspended') {
+          resumeContext().catch(error => {
+            console.warn('Failed to resume AudioContext on visibility change:', error);
+          });
+        }
+      } else if (document.visibilityState === 'hidden') {
+        // 可选：当页面不可见时暂停上下文以节省资源
+        // 取消注释下面的代码以启用此功能
+        // suspendContext().catch(error => {
+        //   console.warn('Failed to suspend AudioContext on visibility change:', error);
+        // });
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [context, isAutoResumeEnabled, resumeContext, suspendContext]);
+
+  // 监控页面卸载以适当清理资源
+  useEffect(() => {
+    if (!context) return;
+    
+    const handleBeforeUnload = () => {
+      // 尝试关闭上下文以防止内存泄漏
+      try {
+        context.close();
+      } catch (error) {
+        // 忽略可能的错误
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      
+      // 组件卸载时关闭上下文
+      if (context && context.state !== 'closed') {
+        context.close().catch(error => {
+          console.warn('Failed to close AudioContext on cleanup:', error);
+        });
+      }
+    };
+  }, [context]);
+
+  return {
+    context,
+    state,
+    isAutoResumeEnabled,
+    setIsAutoResumeEnabled,
+    createContext,
+    resumeContext,
+    suspendContext,
+    closeContext,
+    hasUserInteraction: userInteractionRef.current
+  };
+}
+
+/**
  * 使用音频处理器钩子
  * @returns {Object} 包含音频处理器函数和状态的对象
  */
