@@ -41,10 +41,35 @@ pub struct CompressorSettings {
     pub makeup_gain: f32,
 }
 
+// 频谱分析结果
+#[derive(Serialize, Deserialize)]
+pub struct SpectrumAnalysisResult {
+    pub magnitudes: Vec<f32>,
+    pub phases: Vec<f32>,
+    pub frequencies: Vec<f32>,
+    pub dominant_frequency: f32,
+    pub spectral_flux: f32,
+}
+
+// 实时处理状态
+#[derive(Serialize, Deserialize)]
+pub struct RealTimeProcessorState {
+    pub envelope: f32,
+    pub pitch_history: Vec<f32>,
+    pub spectral_flux_history: Vec<f32>,
+    pub rms_history: Vec<f32>,
+}
+
 // AudioProcessor 主处理器类
 #[wasm_bindgen]
 pub struct AudioProcessor {
     sample_rate: usize,
+    fft_planner: Option<RealFftPlanner<f32>>,
+    envelope: f32,
+    pitch_history: Vec<f32>,
+    spectral_flux_history: Vec<f32>,
+    rms_history: Vec<f32>,
+    prev_spectrum: Option<Vec<f32>>,
 }
 
 #[wasm_bindgen]
@@ -56,6 +81,12 @@ impl AudioProcessor {
         
         AudioProcessor {
             sample_rate: 44100,
+            fft_planner: Some(RealFftPlanner::new()),
+            envelope: 0.0,
+            pitch_history: vec![0.0; 10],
+            spectral_flux_history: vec![0.0; 30],
+            rms_history: vec![0.0; 30],
+            prev_spectrum: None,
         }
     }
     
@@ -392,6 +423,158 @@ impl AudioProcessor {
         }
         
         count as f32 / (audio_data.len() as f32 - 1.0)
+    }
+    
+    // 实时处理一帧音频数据
+    #[wasm_bindgen]
+    pub fn process_audio_frame(&mut self, audio_frame: &mut [f32], settings: JsValue) -> Result<JsValue, JsValue> {
+        let eq_settings: EqualizerSettings = serde_wasm_bindgen::from_value(settings)?;
+        
+        // 应用均衡器处理
+        self.apply_equalizer(audio_frame, settings)?;
+        
+        // 更新包络跟踪器（用于音量监测）
+        let current_rms = self.calculate_rms(audio_frame);
+        self.envelope = 0.9 * self.envelope + 0.1 * current_rms;
+        
+        // 更新RMS历史
+        self.rms_history.remove(0);
+        self.rms_history.push(current_rms);
+        
+        // 检测音高并更新历史
+        if let Some(pitch) = self.detect_pitch(audio_frame) {
+            self.pitch_history.remove(0);
+            self.pitch_history.push(pitch);
+        }
+        
+        // 计算频谱并更新频谱变化历史
+        if let Some(spectrum_result) = self.analyze_spectrum(audio_frame) {
+            self.spectral_flux_history.remove(0);
+            self.spectral_flux_history.push(spectrum_result.spectral_flux);
+        }
+        
+        // 创建返回状态
+        let state = RealTimeProcessorState {
+            envelope: self.envelope,
+            pitch_history: self.pitch_history.clone(),
+            spectral_flux_history: self.spectral_flux_history.clone(),
+            rms_history: self.rms_history.clone(),
+        };
+        
+        Ok(serde_wasm_bindgen::to_value(&state)?)
+    }
+    
+    // 频谱分析
+    #[wasm_bindgen]
+    pub fn analyze_spectrum(&mut self, audio_data: &[f32]) -> Option<SpectrumAnalysisResult> {
+        if audio_data.len() < 512 {
+            return None;
+        }
+        
+        let fft_size = 1024;
+        let sample_rate = self.sample_rate;
+        
+        // 提取分析窗口
+        let mut analysis_window = Vec::with_capacity(fft_size);
+        let start_idx = audio_data.len().saturating_sub(fft_size);
+        
+        // 复制数据并应用汉宁窗
+        for i in 0..fft_size {
+            if start_idx + i < audio_data.len() {
+                let window_val = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / (fft_size - 1) as f32).cos());
+                analysis_window.push(audio_data[start_idx + i] * window_val);
+            } else {
+                analysis_window.push(0.0);
+            }
+        }
+        
+        // 执行FFT
+        let planner = self.fft_planner.as_mut()?;
+        let r2c = planner.plan_fft_forward(fft_size);
+        let mut buffer = analysis_window;
+        let mut spectrum = r2c.make_output_vec();
+        
+        if let Err(_) = r2c.process(&mut buffer, &mut spectrum) {
+            return None;
+        }
+        
+        // 计算幅度和相位
+        let mut magnitudes = vec![0.0; spectrum.len()];
+        let mut phases = vec![0.0; spectrum.len()];
+        let mut max_magnitude = 0.0;
+        let mut max_magnitude_idx = 0;
+        
+        for (i, bin) in spectrum.iter().enumerate() {
+            let magnitude = (bin.re * bin.re + bin.im * bin.im).sqrt();
+            let phase = bin.im.atan2(bin.re);
+            
+            magnitudes[i] = magnitude;
+            phases[i] = phase;
+            
+            if magnitude > max_magnitude {
+                max_magnitude = magnitude;
+                max_magnitude_idx = i;
+            }
+        }
+        
+        // 计算频率
+        let frequencies = (0..spectrum.len())
+            .map(|i| i as f32 * sample_rate as f32 / fft_size as f32)
+            .collect::<Vec<f32>>();
+        
+        let dominant_frequency = max_magnitude_idx as f32 * sample_rate as f32 / fft_size as f32;
+        
+        // 计算频谱变化（与上一帧相比）
+        let spectral_flux = match &self.prev_spectrum {
+            Some(prev) => {
+                // 限制到最小长度
+                let min_len = prev.len().min(magnitudes.len());
+                
+                // 计算频谱变化
+                let mut flux = 0.0;
+                for i in 0..min_len {
+                    let diff = magnitudes[i] - prev[i];
+                    // 只考虑增长的部分（HFC - High Frequency Content）
+                    flux += if diff > 0.0 { diff } else { 0.0 };
+                }
+                
+                flux
+            },
+            None => 0.0,
+        };
+        
+        // 更新先前频谱
+        self.prev_spectrum = Some(magnitudes.clone());
+        
+        Some(SpectrumAnalysisResult {
+            magnitudes,
+            phases,
+            frequencies,
+            dominant_frequency,
+            spectral_flux,
+        })
+    }
+    
+    // 获取当前处理状态
+    #[wasm_bindgen]
+    pub fn get_processor_state(&self) -> Result<JsValue, JsValue> {
+        let state = RealTimeProcessorState {
+            envelope: self.envelope,
+            pitch_history: self.pitch_history.clone(),
+            spectral_flux_history: self.spectral_flux_history.clone(),
+            rms_history: self.rms_history.clone(),
+        };
+        
+        Ok(serde_wasm_bindgen::to_value(&state)?)
+    }
+    
+    // 分析频谱数据 - 返回结果到JS
+    #[wasm_bindgen]
+    pub fn analyze_spectrum_data(&mut self, audio_data: &[f32]) -> Result<JsValue, JsValue> {
+        match self.analyze_spectrum(audio_data) {
+            Some(result) => Ok(serde_wasm_bindgen::to_value(&result)?),
+            None => Err(JsValue::from_str("无法分析频谱数据")),
+        }
     }
 }
 
