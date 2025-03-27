@@ -8,10 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
-	"golang.org/x/crypto/bcrypt"
-	
-	"github.com/your-username/language-learning-audio-player/backend/database"
-	"github.com/your-username/language-learning-audio-player/backend/database/models"
+
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database/models"
 )
 
 // 登录请求结构
@@ -175,13 +174,13 @@ func registerHandler(c *gin.Context) {
 func validateTokenHandler(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	userRepo := models.NewUserRepository(database.DB)
-	
+
 	user, err := userRepo.GetByID(userID.(string))
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "无效会话"})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{
 		"user": gin.H{
 			"id":    user.ID,

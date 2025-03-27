@@ -2,9 +2,7 @@
 package migrations
 
 import (
-	"github.com/jmoiron/sqlx"
-
-	"github.com/your-username/language-learning-audio-player/backend/database"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database"
 )
 
 // RegisterAllMigrations 注册所有迁移
@@ -16,4 +14,4 @@ func RegisterAllMigrations() {
 var (
 	RegisterMigration = database.RegisterMigration
 	MigrationFunc     = database.MigrationFunc
-) 
+)

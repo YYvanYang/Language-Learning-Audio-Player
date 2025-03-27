@@ -7,15 +7,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
-	"github.com/your-username/language-learning-audio-player/backend/database"
-	_ "github.com/your-username/language-learning-audio-player/backend/database/migrations" // 引入所有迁移
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database"
+	_ "github.com/YYvanYang/Language-Learning-Audio-Player/backend/database/migrations" // 引入所有迁移
 )
 
 func main() {
@@ -62,19 +61,19 @@ func main() {
 	{
 		// 获取音频访问令牌
 		audioRoutes.GET("/token/:trackId", AuthMiddleware(), getAudioTokenHandler)
-		
+
 		// 音频流式传输 - 带令牌验证
 		audioRoutes.GET("/stream/:trackId", streamAudioHandler)
-		
+
 		// 自适应音频流式传输 - 带令牌验证和自动质量选择
 		audioRoutes.GET("/adaptive/:trackId", getAdaptiveStreamHandler)
-		
+
 		// 音频元数据
 		audioRoutes.GET("/metadata/:trackId", AuthMiddleware(), getAudioMetadataHandler)
-		
+
 		// 上传自定义音频
 		audioRoutes.POST("/upload", AuthMiddleware(), uploadAudioHandler)
-		
+
 		// 用户音频列表
 		audioRoutes.GET("/user-tracks", AuthMiddleware(), getUserTracksHandler)
 	}
@@ -93,13 +92,13 @@ func main() {
 	{
 		// 获取课程列表
 		courseRoutes.GET("/", AuthMiddleware(), getCoursesHandler)
-		
+
 		// 获取单一课程详情
 		courseRoutes.GET("/:courseId", AuthMiddleware(), CourseAccessMiddleware(), getCourseHandler)
-		
+
 		// 获取课程单元
 		courseRoutes.GET("/:courseId/units", AuthMiddleware(), CourseAccessMiddleware(), getCourseUnitsHandler)
-		
+
 		// 获取单元音轨
 		courseRoutes.GET("/:courseId/units/:unitId/tracks", AuthMiddleware(), CourseAccessMiddleware(), getUnitTracksHandler)
 	}
@@ -110,13 +109,13 @@ func main() {
 		// 需要管理员权限
 		adminRoutes.Use(AuthMiddleware())
 		adminRoutes.Use(AdminMiddleware())
-		
+
 		// 用户管理
 		adminRoutes.GET("/users", getSystemUsersHandler)
 		adminRoutes.POST("/users", createSystemUserHandler)
 		adminRoutes.PUT("/users/:userId", updateSystemUserHandler)
 		adminRoutes.DELETE("/users/:userId", deleteSystemUserHandler)
-		
+
 		// 系统状态
 		adminRoutes.GET("/stats", getSystemStatsHandler)
 	}
@@ -128,7 +127,7 @@ func main() {
 
 	// 获取端口
 	port := getEnv("PORT", "8080")
-	
+
 	// 创建HTTP服务器
 	srv := &http.Server{
 		Addr:    ":" + port,
@@ -148,18 +147,18 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	
+
 	log.Println("Shutting down server...")
-	
+
 	// 设置超时上下文
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// 优雅关闭服务器
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Server shutdown error: %s", err)
 	}
-	
+
 	log.Println("Server exited")
 }
 
