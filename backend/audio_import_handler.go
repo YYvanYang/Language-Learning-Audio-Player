@@ -20,7 +20,7 @@ import (
 )
 
 // 最大音频文件大小 (100MB)
-const maxAudioFileSize = 100 * 1024 * 1024
+const maxAudioFileSize int64 = 100 * 1024 * 1024
 
 // 允许的音频MIME类型
 var allowedAudioMimeTypes = map[string]bool{

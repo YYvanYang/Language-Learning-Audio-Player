@@ -2,18 +2,18 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"math/rand"
-	"log"
-	"encoding/json"
-	"sort"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,18 +33,18 @@ type AudioTokenRequest struct {
 
 // 音频元数据响应结构
 type AudioMetadata struct {
-	TrackID        string             `json:"trackId"`
-	Title          string             `json:"title"`
-	Artist         string             `json:"artist,omitempty"`
-	Duration       float64            `json:"duration"`
-	Format         string             `json:"format"`
-	BitRate        int                `json:"bitRate,omitempty"`
-	SampleRate     int                `json:"sampleRate,omitempty"`
-	Channels       int                `json:"channels,omitempty"`
-	WaveformData   []float32          `json:"waveformData,omitempty"`
-	SpectralData   []float32          `json:"spectralData,omitempty"`
-	Bookmarks      []AudioBookmark    `json:"bookmarks,omitempty"`
-	TranscriptData *AudioTranscript   `json:"transcriptData,omitempty"`
+	TrackID        string                 `json:"trackId"`
+	Title          string                 `json:"title"`
+	Artist         string                 `json:"artist,omitempty"`
+	Duration       float64                `json:"duration"`
+	Format         string                 `json:"format"`
+	BitRate        int                    `json:"bitRate,omitempty"`
+	SampleRate     int                    `json:"sampleRate,omitempty"`
+	Channels       int                    `json:"channels,omitempty"`
+	WaveformData   []float32              `json:"waveformData,omitempty"`
+	SpectralData   []float32              `json:"spectralData,omitempty"`
+	Bookmarks      []AudioBookmark        `json:"bookmarks,omitempty"`
+	TranscriptData *AudioTranscript       `json:"transcriptData,omitempty"`
 	CustomData     map[string]interface{} `json:"customData,omitempty"`
 }
 
@@ -59,7 +59,7 @@ type AudioBookmark struct {
 
 // 音频字幕/转录结构
 type AudioTranscript struct {
-	Language string           `json:"language"`
+	Language string              `json:"language"`
 	Segments []TranscriptSegment `json:"segments"`
 }
 
@@ -204,14 +204,14 @@ func streamAudioHandler(c *gin.Context) {
 		// 实际环境中应从配置读取允许的域名列表
 		allowedDomains := strings.Split(getEnv("ALLOWED_DOMAINS", "localhost:3000,localhost:8080"), ",")
 		refererValid := false
-		
+
 		for _, domain := range allowedDomains {
 			if strings.Contains(referer, strings.TrimSpace(domain)) {
 				refererValid = true
 				break
 			}
 		}
-		
+
 		if !refererValid {
 			c.JSON(http.StatusForbidden, gin.H{"error": "非法的资源访问来源"})
 			return
@@ -288,61 +288,61 @@ func streamAudioHandler(c *gin.Context) {
 		// 创建一个缓冲区进行高效传输
 		buffer := make([]byte, 4096) // 4KB缓冲区
 		bytesRemaining := ranges[0].Length
-		
+
 		for bytesRemaining > 0 {
 			readSize := int64(len(buffer))
 			if bytesRemaining < readSize {
 				readSize = bytesRemaining
 			}
-			
+
 			n, err := audioFile.Read(buffer[:readSize])
 			if err != nil && err != io.EOF {
 				// 记录错误但不中断流传输
 				log.Printf("读取文件错误: %v", err)
 				break
 			}
-			
+
 			if n == 0 {
 				break // 文件结束
 			}
-			
+
 			_, err = c.Writer.Write(buffer[:n])
 			if err != nil {
 				// 客户端可能断开连接
 				log.Printf("写入响应错误: %v", err)
 				break
 			}
-			
+
 			bytesRemaining -= int64(n)
 		}
 	} else {
 		// 流式传输整个文件
 		c.Header("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
-		
+
 		// 使用自定义的方式流式传输，以便更好的控制和监控
 		buffer := make([]byte, 8192) // 8KB缓冲区
 		bytesTotal := fileInfo.Size()
 		bytesSent := int64(0)
-		
+
 		for bytesSent < bytesTotal {
 			n, err := audioFile.Read(buffer)
 			if err != nil && err != io.EOF {
 				log.Printf("读取文件错误: %v", err)
 				break
 			}
-			
+
 			if n == 0 {
 				break // 文件结束
 			}
-			
+
 			_, err = c.Writer.Write(buffer[:n])
 			if err != nil {
 				log.Printf("写入响应错误: %v", err)
 				break
 			}
-			
+
 			bytesSent += int64(n)
-			
+
 			// 防止带宽过载，增加一个微小延迟（可选）
 			// time.Sleep(time.Microsecond * 100)
 		}
@@ -785,7 +785,7 @@ func getAudioMetadataHandler(c *gin.Context) {
 	// 获取查询参数
 	courseID := c.Query("courseId")
 	unitID := c.Query("unitId")
-	
+
 	if courseID == "" || unitID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少课程ID或单元ID"})
 		return
@@ -854,16 +854,16 @@ func getAudioMetadataHandler(c *gin.Context) {
 func extractAudioMetadata(audioPath, trackID string) (*AudioMetadata, error) {
 	// 在实际产品中，应使用FFmpeg或其他音频处理库提取完整元数据
 	// 这里为简化实现，仅从文件名和大小推断基本信息
-	
+
 	fileInfo, err := os.Stat(audioPath)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// 从文件名获取基本信息
 	fileName := filepath.Base(audioPath)
 	fileExt := strings.ToLower(filepath.Ext(audioPath))
-	
+
 	// 确定格式
 	format := "unknown"
 	switch fileExt {
@@ -878,13 +878,13 @@ func extractAudioMetadata(audioPath, trackID string) (*AudioMetadata, error) {
 	case ".m4a":
 		format = "audio/m4a"
 	}
-	
+
 	// 估算时长和比特率（在真实环境中应使用媒体处理库）
 	// 这里的估算非常粗略，仅用于演示
 	bitRate := 128000 // 默认比特率128kbps
 	fileSize := fileInfo.Size()
 	duration := float64(fileSize*8) / float64(bitRate)
-	
+
 	// 创建元数据
 	metadata := &AudioMetadata{
 		TrackID:    trackID,
@@ -895,7 +895,7 @@ func extractAudioMetadata(audioPath, trackID string) (*AudioMetadata, error) {
 		SampleRate: 44100, // 假设采样率44.1kHz
 		Channels:   2,     // 假设立体声
 	}
-	
+
 	return metadata, nil
 }
 
@@ -903,12 +903,12 @@ func extractAudioMetadata(audioPath, trackID string) (*AudioMetadata, error) {
 func getUserBookmarks(userID, trackID string) ([]AudioBookmark, error) {
 	// 在实际产品中，应从数据库中获取用户为特定音轨设置的书签
 	// 这里为模拟实现，返回一些测试数据
-	
+
 	// 如果不存在书签，返回空数组
 	if rand.Intn(2) == 0 {
 		return []AudioBookmark{}, nil
 	}
-	
+
 	// 模拟一些书签
 	bookmarks := []AudioBookmark{
 		{
@@ -925,7 +925,7 @@ func getUserBookmarks(userID, trackID string) ([]AudioBookmark, error) {
 			Notes:     "注意这里的时态变化",
 		},
 	}
-	
+
 	return bookmarks, nil
 }
 
@@ -933,12 +933,12 @@ func getUserBookmarks(userID, trackID string) ([]AudioBookmark, error) {
 func getAudioTranscript(courseID, unitID, trackID string) (*AudioTranscript, error) {
 	// 在实际产品中，应从数据库或文件系统中获取相应的转录文件
 	// 这里为模拟实现，返回一些测试数据或nil
-	
+
 	// 随机决定是否有转录
 	if rand.Intn(2) == 0 {
 		return nil, fmt.Errorf("无转录数据")
 	}
-	
+
 	// 模拟转录数据
 	transcript := &AudioTranscript{
 		Language: "zh-CN",
@@ -960,7 +960,7 @@ func getAudioTranscript(courseID, unitID, trackID string) (*AudioTranscript, err
 			},
 		},
 	}
-	
+
 	return transcript, nil
 }
 
@@ -968,15 +968,15 @@ func getAudioTranscript(courseID, unitID, trackID string) (*AudioTranscript, err
 func getAudioWaveform(courseID, unitID, trackID string) ([]float32, error) {
 	// 在实际产品中，应预先处理并存储波形数据或实时生成
 	// 这里为模拟实现，生成一些随机数据
-	
+
 	// 为简化起见，只生成100个点的波形数据
 	waveformData := make([]float32, 100)
-	
+
 	for i := range waveformData {
 		// 生成0-1之间的随机值
 		waveformData[i] = rand.Float32()
 	}
-	
+
 	return waveformData, nil
 }
 
@@ -984,12 +984,12 @@ func getAudioWaveform(courseID, unitID, trackID string) ([]float32, error) {
 func getUserAudioCustomData(userID, trackID string) (map[string]interface{}, error) {
 	// 在实际产品中，应从数据库中获取用户对特定音轨的自定义数据
 	// 这里为模拟实现，返回一些测试数据
-	
+
 	// 如果不存在自定义数据，返回nil
 	if rand.Intn(2) == 0 {
 		return nil, fmt.Errorf("无自定义数据")
 	}
-	
+
 	// 模拟自定义数据
 	customData := map[string]interface{}{
 		"lastPosition": 25.7,
@@ -999,7 +999,7 @@ func getUserAudioCustomData(userID, trackID string) (map[string]interface{}, err
 		"difficulty":   "intermediate",
 		"tags":         []string{"语法", "听力练习"},
 	}
-	
+
 	return customData, nil
 }
 
@@ -1017,7 +1017,7 @@ func uploadAudioHandler(c *gin.Context) {
 	unitID := c.PostForm("unitId")
 	title := c.PostForm("title")
 	description := c.PostForm("description")
-	
+
 	// 验证必要参数
 	if courseID == "" || unitID == "" || title == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少必要参数"})
@@ -1052,9 +1052,9 @@ func uploadAudioHandler(c *gin.Context) {
 	}
 
 	// 验证文件大小
-	if header.Size > maxAudioFileSize() {
+	if header.Size > getMaxAudioFileSize() {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": fmt.Sprintf("文件太大，最大允许大小为 %d MB", maxAudioFileSize()/1024/1024),
+			"error": fmt.Sprintf("文件太大，最大允许大小为 %d MB", getMaxAudioFileSize()/1024/1024),
 		})
 		return
 	}
@@ -1062,17 +1062,17 @@ func uploadAudioHandler(c *gin.Context) {
 	// 生成唯一文件名
 	trackID := generateUniqueID()
 	fileName := trackID + fileExt
-	
+
 	// 创建保存路径
 	uploadDir := filepath.Join("storage", "audio", "uploads", userID.(string))
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建上传目录失败"})
 		return
 	}
-	
+
 	// 保存文件路径
 	filePath := filepath.Join(uploadDir, fileName)
-	
+
 	// 创建文件
 	out, err := os.Create(filePath)
 	if err != nil {
@@ -1080,7 +1080,7 @@ func uploadAudioHandler(c *gin.Context) {
 		return
 	}
 	defer out.Close()
-	
+
 	// 复制文件内容
 	if _, err = io.Copy(out, file); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存文件失败"})
@@ -1098,21 +1098,21 @@ func uploadAudioHandler(c *gin.Context) {
 
 	// 保存音轨信息到数据库
 	trackInfo := UserTrackInfo{
-		ID:          trackID,
-		UserID:      userID.(string),
-		CourseID:    courseID,
-		UnitID:      unitID,
-		Title:       title,
-		Description: description,
-		FileName:    fileName,
-		FilePath:    processedFilePath,
+		ID:               trackID,
+		UserID:           userID.(string),
+		CourseID:         courseID,
+		UnitID:           unitID,
+		Title:            title,
+		Description:      description,
+		FileName:         fileName,
+		FilePath:         processedFilePath,
 		OriginalFileName: header.Filename,
-		FileSize:    header.Size,
-		Duration:    duration,
-		Format:      fileExt[1:], // 去掉点号
-		UploadTime:  time.Now(),
+		FileSize:         header.Size,
+		Duration:         duration,
+		Format:           fileExt[1:], // 去掉点号
+		UploadTime:       time.Now(),
 	}
-	
+
 	// 保存到数据库
 	if err := saveUserTrack(trackInfo); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "保存音轨信息失败"})
@@ -1130,19 +1130,19 @@ func uploadAudioHandler(c *gin.Context) {
 
 // 用户音轨信息结构
 type UserTrackInfo struct {
-	ID              string    `json:"id"`
-	UserID          string    `json:"userId"`
-	CourseID        string    `json:"courseId"`
-	UnitID          string    `json:"unitId"`
-	Title           string    `json:"title"`
-	Description     string    `json:"description,omitempty"`
-	FileName        string    `json:"fileName"`
-	FilePath        string    `json:"filePath"`
-	OriginalFileName string   `json:"originalFileName"`
-	FileSize        int64     `json:"fileSize"`
-	Duration        float64   `json:"duration"`
-	Format          string    `json:"format"`
-	UploadTime      time.Time `json:"uploadTime"`
+	ID               string    `json:"id"`
+	UserID           string    `json:"userId"`
+	CourseID         string    `json:"courseId"`
+	UnitID           string    `json:"unitId"`
+	Title            string    `json:"title"`
+	Description      string    `json:"description,omitempty"`
+	FileName         string    `json:"fileName"`
+	FilePath         string    `json:"filePath"`
+	OriginalFileName string    `json:"originalFileName"`
+	FileSize         int64     `json:"fileSize"`
+	Duration         float64   `json:"duration"`
+	Format           string    `json:"format"`
+	UploadTime       time.Time `json:"uploadTime"`
 }
 
 // 检查是否为允许的音频格式
@@ -1157,7 +1157,7 @@ func isAllowedAudioFormat(ext string) bool {
 }
 
 // 最大允许的音频文件大小（100MB）
-func maxAudioFileSize() int64 {
+func getMaxAudioFileSize() int64 {
 	// 从环境变量获取，默认100MB
 	sizeStr := getEnv("MAX_AUDIO_SIZE", "104857600")
 	size, err := strconv.ParseInt(sizeStr, 10, 64)
@@ -1179,47 +1179,47 @@ func processAudioFile(filePath string, trackID string) (string, float64, error) 
 	if err := os.MkdirAll(processedDir, 0755); err != nil {
 		return "", 0, err
 	}
-	
+
 	// 获取文件扩展名
 	fileExt := filepath.Ext(filePath)
-	
+
 	// 创建处理后的文件路径
 	processedFilePath := filepath.Join(processedDir, trackID+fileExt)
-	
+
 	// 在实际产品中，应该执行：
 	// 1. 标准化音频格式
 	// 2. 优化音质
 	// 3. 生成波形数据
 	// 4. 提取元数据
-	
+
 	// 简化实现，仅复制文件
 	sourceFile, err := os.Open(filePath)
 	if err != nil {
 		return "", 0, err
 	}
 	defer sourceFile.Close()
-	
+
 	destFile, err := os.Create(processedFilePath)
 	if err != nil {
 		return "", 0, err
 	}
 	defer destFile.Close()
-	
+
 	if _, err := io.Copy(destFile, sourceFile); err != nil {
 		return "", 0, err
 	}
-	
+
 	// 获取文件信息以计算大致时长
 	fileInfo, err := os.Stat(filePath)
 	if err != nil {
 		return "", 0, err
 	}
-	
+
 	// 假设以128kbps比特率估算时长
 	bitRate := 128000.0 // 比特率128kbps
 	fileSize := float64(fileInfo.Size())
 	duration := (fileSize * 8.0) / bitRate
-	
+
 	return processedFilePath, duration, nil
 }
 
@@ -1229,18 +1229,18 @@ func saveUserTrack(track UserTrackInfo) error {
 	// 这里为简化实现，仅打印日志
 	log.Printf("保存用户音轨: ID=%s, 标题=%s, 用户=%s, 课程=%s, 单元=%s",
 		track.ID, track.Title, track.UserID, track.CourseID, track.UnitID)
-	
+
 	// 可以将信息保存到JSON文件中进行模拟
 	tracksDir := filepath.Join("storage", "tracks")
 	if err := os.MkdirAll(tracksDir, 0755); err != nil {
 		return err
 	}
-	
+
 	trackData, err := json.Marshal(track)
 	if err != nil {
 		return err
 	}
-	
+
 	trackFile := filepath.Join(tracksDir, track.ID+".json")
 	return os.WriteFile(trackFile, trackData, 0644)
 }
@@ -1257,7 +1257,7 @@ func getUserTracksHandler(c *gin.Context) {
 	// 获取查询参数（可选）
 	courseID := c.Query("courseId")
 	unitID := c.Query("unitId")
-	
+
 	// 检查是否有权访问课程（如果指定了课程）
 	if courseID != "" {
 		hasAccess, err := userHasAccessToCourse(userID.(string), courseID)
@@ -1265,17 +1265,17 @@ func getUserTracksHandler(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "验证用户权限失败"})
 			return
 		}
-		
+
 		if !hasAccess {
 			c.JSON(http.StatusForbidden, gin.H{"error": "您没有权限访问此课程"})
 			return
 		}
 	}
-	
+
 	// 获取分页参数
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "20"))
-	
+
 	// 验证分页参数
 	if page < 1 {
 		page = 1
@@ -1283,25 +1283,25 @@ func getUserTracksHandler(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	
+
 	// 获取筛选和排序参数
 	sortBy := c.DefaultQuery("sortBy", "uploadTime")
 	sortOrder := c.DefaultQuery("sortOrder", "desc")
 	filter := c.DefaultQuery("filter", "")
-	
+
 	// 获取用户音轨列表
 	tracks, total, err := getUserTracks(userID.(string), courseID, unitID, page, pageSize, sortBy, sortOrder, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取音轨列表失败"})
 		return
 	}
-	
+
 	// 返回结果
 	c.JSON(http.StatusOK, gin.H{
-		"tracks":    tracks,
-		"total":     total,
-		"page":      page,
-		"pageSize":  pageSize,
+		"tracks":     tracks,
+		"total":      total,
+		"page":       page,
+		"pageSize":   pageSize,
 		"totalPages": (total + pageSize - 1) / pageSize,
 	})
 }
@@ -1310,71 +1310,71 @@ func getUserTracksHandler(c *gin.Context) {
 func getUserTracks(userID, courseID, unitID string, page, pageSize int, sortBy, sortOrder, filter string) ([]UserTrackInfo, int, error) {
 	// 在实际产品中，应从数据库中获取用户音轨列表
 	// 这里为模拟实现，生成一些测试数据
-	
+
 	// 创建模拟数据
 	tracks := []UserTrackInfo{
 		{
-			ID:          generateUniqueID(),
-			UserID:      userID,
-			CourseID:    "course_1",
-			UnitID:      "unit_1",
-			Title:       "自定义音频 1",
-			Description: "这是我上传的第一个音频文件",
-			FileName:    "audio1.mp3",
-			FilePath:    "storage/audio/processed/track_123456_abcdef.mp3",
+			ID:               generateUniqueID(),
+			UserID:           userID,
+			CourseID:         "course_1",
+			UnitID:           "unit_1",
+			Title:            "自定义音频 1",
+			Description:      "这是我上传的第一个音频文件",
+			FileName:         "audio1.mp3",
+			FilePath:         "storage/audio/processed/track_123456_abcdef.mp3",
 			OriginalFileName: "my_recording.mp3",
-			FileSize:    1024 * 1024 * 3, // 3MB
-			Duration:    180.5,           // 3分钟
-			Format:      "mp3",
-			UploadTime:  time.Now().Add(-24 * time.Hour), // 昨天
+			FileSize:         1024 * 1024 * 3, // 3MB
+			Duration:         180.5,           // 3分钟
+			Format:           "mp3",
+			UploadTime:       time.Now().Add(-24 * time.Hour), // 昨天
 		},
 		{
-			ID:          generateUniqueID(),
-			UserID:      userID,
-			CourseID:    "course_1",
-			UnitID:      "unit_2",
-			Title:       "自定义音频 2",
-			Description: "第二单元练习",
-			FileName:    "audio2.wav",
-			FilePath:    "storage/audio/processed/track_234567_bcdefg.wav",
+			ID:               generateUniqueID(),
+			UserID:           userID,
+			CourseID:         "course_1",
+			UnitID:           "unit_2",
+			Title:            "自定义音频 2",
+			Description:      "第二单元练习",
+			FileName:         "audio2.wav",
+			FilePath:         "storage/audio/processed/track_234567_bcdefg.wav",
 			OriginalFileName: "practice_unit2.wav",
-			FileSize:    1024 * 1024 * 5, // 5MB
-			Duration:    240.0,           // 4分钟
-			Format:      "wav",
-			UploadTime:  time.Now().Add(-2 * 24 * time.Hour), // 前天
+			FileSize:         1024 * 1024 * 5, // 5MB
+			Duration:         240.0,           // 4分钟
+			Format:           "wav",
+			UploadTime:       time.Now().Add(-2 * 24 * time.Hour), // 前天
 		},
 		{
-			ID:          generateUniqueID(),
-			UserID:      userID,
-			CourseID:    "course_2",
-			UnitID:      "unit_1",
-			Title:       "发音练习",
-			Description: "重点词汇发音练习",
-			FileName:    "audio3.ogg",
-			FilePath:    "storage/audio/processed/track_345678_cdefgh.ogg",
+			ID:               generateUniqueID(),
+			UserID:           userID,
+			CourseID:         "course_2",
+			UnitID:           "unit_1",
+			Title:            "发音练习",
+			Description:      "重点词汇发音练习",
+			FileName:         "audio3.ogg",
+			FilePath:         "storage/audio/processed/track_345678_cdefgh.ogg",
 			OriginalFileName: "pronunciation.ogg",
-			FileSize:    1024 * 1024 * 2, // 2MB
-			Duration:    120.25,          // 2分钟
-			Format:      "ogg",
-			UploadTime:  time.Now().Add(-3 * 24 * time.Hour), // 3天前
+			FileSize:         1024 * 1024 * 2, // 2MB
+			Duration:         120.25,          // 2分钟
+			Format:           "ogg",
+			UploadTime:       time.Now().Add(-3 * 24 * time.Hour), // 3天前
 		},
 	}
-	
+
 	// 应用课程和单元筛选
 	var filteredTracks []UserTrackInfo
 	for _, track := range tracks {
 		if (courseID == "" || track.CourseID == courseID) &&
-		   (unitID == "" || track.UnitID == unitID) {
+			(unitID == "" || track.UnitID == unitID) {
 			// 应用标题筛选
 			if filter == "" || strings.Contains(strings.ToLower(track.Title), strings.ToLower(filter)) {
 				filteredTracks = append(filteredTracks, track)
 			}
 		}
 	}
-	
+
 	// 记录总数量
 	total := len(filteredTracks)
-	
+
 	// 排序
 	switch sortBy {
 	case "title":
@@ -1418,28 +1418,28 @@ func getUserTracks(userID, courseID, unitID string, page, pageSize int, sortBy, 
 			})
 		}
 	}
-	
+
 	// 应用分页
 	startIndex := (page - 1) * pageSize
 	if startIndex >= len(filteredTracks) {
 		return []UserTrackInfo{}, total, nil
 	}
-	
+
 	endIndex := startIndex + pageSize
 	if endIndex > len(filteredTracks) {
 		endIndex = len(filteredTracks)
 	}
-	
+
 	return filteredTracks[startIndex:endIndex], total, nil
 }
 
 // 音频质量配置结构
 type AudioQualityConfig struct {
-	Name      string `json:"name"`
-	Bitrate   int    `json:"bitrate"`   // 比特率，单位kbps
-	SampleRate int   `json:"sampleRate"` // 采样率，单位Hz
-	Channels  int    `json:"channels"`  // 声道数
-	Extension string `json:"extension"` // 文件扩展名
+	Name       string `json:"name"`
+	Bitrate    int    `json:"bitrate"`    // 比特率，单位kbps
+	SampleRate int    `json:"sampleRate"` // 采样率，单位Hz
+	Channels   int    `json:"channels"`   // 声道数
+	Extension  string `json:"extension"`  // 文件扩展名
 }
 
 // 音频格式请求参数
@@ -1497,14 +1497,14 @@ func getAdaptiveStreamHandler(c *gin.Context) {
 		// 从配置读取允许的域名列表
 		allowedDomains := strings.Split(getEnv("ALLOWED_DOMAINS", "localhost:3000,localhost:8080"), ",")
 		refererValid := false
-		
+
 		for _, domain := range allowedDomains {
 			if strings.Contains(referer, strings.TrimSpace(domain)) {
 				refererValid = true
 				break
 			}
 		}
-		
+
 		if !refererValid {
 			c.JSON(http.StatusForbidden, gin.H{"error": "非法的资源访问来源"})
 			return
@@ -1521,10 +1521,10 @@ func getAdaptiveStreamHandler(c *gin.Context) {
 	// 检查客户端网络条件
 	bandwidth := estimateClientBandwidth(c)
 	logClientStats(accessToken.UserID, trackID, c.ClientIP(), bandwidth)
-	
+
 	// 根据带宽和请求参数确定最佳音频质量
 	qualityConfig := selectBestQuality(bandwidth, formatReq)
-	
+
 	// 获取或生成对应质量的音频文件
 	adaptiveAudioPath, err := getAdaptiveAudioFile(audioPath, trackID, qualityConfig)
 	if err != nil {
@@ -1560,7 +1560,7 @@ func getAdaptiveStreamHandler(c *gin.Context) {
 	c.Header("Expires", "0")
 	c.Header("Content-Disposition", "inline")
 	c.Header("X-Content-Type-Options", "nosniff")
-	
+
 	// 对于自适应流，添加音频质量相关的头信息
 	c.Header("X-Audio-Quality", qualityConfig.Name)
 	c.Header("X-Audio-Bitrate", fmt.Sprintf("%d", qualityConfig.Bitrate))
@@ -1625,7 +1625,7 @@ func estimateClientBandwidth(c *gin.Context) int {
 			return downlink // 返回客户端提供的带宽估计（kbps）
 		}
 	}
-	
+
 	// 检查ECT（有效连接类型）头
 	ect := c.Request.Header.Get("ECT")
 	switch ect {
@@ -1638,7 +1638,7 @@ func estimateClientBandwidth(c *gin.Context) int {
 	case "slow-2g":
 		return 100 // 假设慢2G约为100kbps
 	}
-	
+
 	// 检查保存的客户端统计数据
 	// 在实际系统中，应从数据库或缓存获取之前的带宽统计
 	clientIP := c.ClientIP()
@@ -1646,7 +1646,7 @@ func estimateClientBandwidth(c *gin.Context) int {
 	if bandwidth > 0 {
 		return bandwidth
 	}
-	
+
 	// 默认假设值 - 1Mbps
 	return 1000
 }
@@ -1658,7 +1658,7 @@ func getClientBandwidthStats(clientIP string) int {
 	if rand.Intn(2) == 0 {
 		return 0 // 表示没有历史数据
 	}
-	
+
 	// 返回一个合理的带宽值（250kbps - 10Mbps）
 	return 250 + rand.Intn(9750)
 }
@@ -1700,13 +1700,13 @@ func selectBestQuality(bandwidth int, req AudioFormatRequest) AudioQualityConfig
 			{Name: "very_low", Bitrate: 48, SampleRate: 22050, Channels: 1, Extension: "aac"},
 		},
 	}
-	
+
 	// 使用默认格式如果请求的格式不支持
 	format := req.Format
 	if _, exists := qualityConfigs[format]; !exists {
 		format = "mp3" // 默认回退到MP3
 	}
-	
+
 	// 如果请求自适应比特率
 	if req.Adaptive {
 		// 根据带宽自动选择合适的质量
@@ -1716,27 +1716,27 @@ func selectBestQuality(bandwidth int, req AudioFormatRequest) AudioQualityConfig
 				return config
 			}
 		}
-		
+
 		// 如果带宽很低，使用最低质量
 		return qualityConfigs[format][len(qualityConfigs[format])-1]
 	} else {
 		// 使用用户指定的质量
 		quality := req.Quality
-		
+
 		// 找到指定质量的配置
 		for _, config := range qualityConfigs[format] {
 			if config.Name == quality {
 				return config
 			}
 		}
-		
+
 		// 默认使用中等质量
 		for _, config := range qualityConfigs[format] {
 			if config.Name == "medium" {
 				return config
 			}
 		}
-		
+
 		// 如果没有找到指定质量，使用第一个可用配置
 		return qualityConfigs[format][0]
 	}
@@ -1747,71 +1747,71 @@ func getAdaptiveAudioFile(srcPath, trackID string, quality AudioQualityConfig) (
 	// 生成转码后文件路径
 	baseDir := filepath.Join("storage", "audio", "transcoded")
 	qualityDir := filepath.Join(baseDir, quality.Name)
-	
+
 	// 确保目录存在
 	if err := os.MkdirAll(qualityDir, 0755); err != nil {
 		return "", err
 	}
-	
+
 	// 生成文件名
-	fileName := fmt.Sprintf("%s_%d_%d_%d.%s", 
-		trackID, 
-		quality.Bitrate, 
-		quality.SampleRate, 
+	fileName := fmt.Sprintf("%s_%d_%d_%d.%s",
+		trackID,
+		quality.Bitrate,
+		quality.SampleRate,
 		quality.Channels,
 		quality.Extension)
-	
+
 	destPath := filepath.Join(qualityDir, fileName)
-	
+
 	// 检查转码后的文件是否已存在
 	if _, err := os.Stat(destPath); err == nil {
 		// 文件已存在，直接返回
 		return destPath, nil
 	}
-	
+
 	// 需要转码 - 在实际系统中，应使用FFmpeg或其他音频处理库
 	// 这里为简化实现，使用模拟转码
 	err := transcodeAudio(srcPath, destPath, quality)
 	if err != nil {
 		return "", err
 	}
-	
+
 	return destPath, nil
 }
 
 // 模拟音频转码（在实际系统中应使用FFmpeg）
 func transcodeAudio(srcPath, destPath string, quality AudioQualityConfig) error {
 	// 注意：这是模拟的转码函数，实际产品中应调用FFmpeg
-	
+
 	// 在实际产品中，这里应使用类似以下的FFmpeg调用:
 	// ffmpeg -i {srcPath} -c:a libmp3lame -b:a {quality.Bitrate}k -ar {quality.SampleRate} -ac {quality.Channels} {destPath}
-	
+
 	// 简化实现，仅复制文件并模拟转码延迟
 	sourceFile, err := os.Open(srcPath)
 	if err != nil {
 		return err
 	}
 	defer sourceFile.Close()
-	
+
 	destFile, err := os.Create(destPath)
 	if err != nil {
 		return err
 	}
 	defer destFile.Close()
-	
+
 	// 复制文件内容
 	_, err = io.Copy(destFile, sourceFile)
 	if err != nil {
 		return err
 	}
-	
+
 	// 模拟转码延迟
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// 记录转码日志
 	log.Printf("音频转码（模拟）: 源=%s, 目标=%s, 比特率=%dkbps, 采样率=%dHz, 声道数=%d",
 		srcPath, destPath, quality.Bitrate, quality.SampleRate, quality.Channels)
-	
+
 	return nil
 }
 
@@ -1831,37 +1831,37 @@ func serveOptimizedRangeRequest(c *gin.Context, file *os.File, fileInfo os.FileI
 
 	// 使用适当的缓冲区大小来优化传输
 	// 对于较大的范围，使用更大的缓冲区
-	bufferSize := 4096 // 4KB 默认缓冲区
+	bufferSize := 4096        // 4KB 默认缓冲区
 	if r.Length > 1024*1024 { // 如果大于1MB
 		bufferSize = 16384 // 16KB 缓冲区
 	}
-	
+
 	buffer := make([]byte, bufferSize)
 	bytesRemaining := r.Length
-	
+
 	// 使用流式传输避免内存过载
 	for bytesRemaining > 0 {
 		readSize := int64(len(buffer))
 		if bytesRemaining < readSize {
 			readSize = bytesRemaining
 		}
-		
+
 		n, err := file.Read(buffer[:readSize])
 		if err != nil && err != io.EOF {
 			log.Printf("读取文件错误: %v", err)
 			break
 		}
-		
+
 		if n == 0 {
 			break // 文件结束
 		}
-		
+
 		_, err = c.Writer.Write(buffer[:n])
 		if err != nil {
 			log.Printf("写入响应错误: %v", err)
 			break
 		}
-		
+
 		bytesRemaining -= int64(n)
 	}
 }
@@ -1870,17 +1870,17 @@ func serveOptimizedRangeRequest(c *gin.Context, file *os.File, fileInfo os.FileI
 func serveAdaptiveStream(c *gin.Context, file *os.File, fileInfo os.FileInfo, bandwidth int) {
 	// 设置内容长度头
 	c.Header("Content-Length", strconv.FormatInt(fileInfo.Size(), 10))
-	
+
 	// 根据带宽调整缓冲区大小和流速率
 	bufferSize := determineOptimalBufferSize(bandwidth)
-	
+
 	// 确定适当的写入延迟（如果需要限速，防止过度缓冲）
 	writeDelay := determineWriteDelay(bandwidth, bufferSize)
-	
+
 	buffer := make([]byte, bufferSize)
 	bytesSent := int64(0)
 	bytesTotal := fileInfo.Size()
-	
+
 	// 使用流式传输避免内存过载
 	for bytesSent < bytesTotal {
 		n, err := file.Read(buffer)
@@ -1888,25 +1888,25 @@ func serveAdaptiveStream(c *gin.Context, file *os.File, fileInfo os.FileInfo, ba
 			log.Printf("读取文件错误: %v", err)
 			break
 		}
-		
+
 		if n == 0 {
 			break // 文件结束
 		}
-		
+
 		// 写入响应
 		_, err = c.Writer.Write(buffer[:n])
 		if err != nil {
 			log.Printf("写入响应错误: %v", err)
 			break
 		}
-		
+
 		bytesSent += int64(n)
-		
+
 		// 如果需要限制速率，添加适当延迟
 		if writeDelay > 0 {
 			time.Sleep(writeDelay)
 		}
-		
+
 		// 刷新写入器，确保数据发送给客户端
 		c.Writer.Flush()
 	}
@@ -1933,7 +1933,7 @@ func determineWriteDelay(bandwidth int, bufferSize int) time.Duration {
 
 	// 注意：在大多数情况下，我们不需要人为限制速度，网络本身会自然限制
 	// 这里的延迟主要用于非常高带宽场景，防止服务器过载
-	
+
 	// 如果带宽高于10Mbps，可能需要一些限制来防止服务器过载
 	if bandwidth > 10000 {
 		// 限制在10Mbps
@@ -1941,7 +1941,7 @@ func determineWriteDelay(bandwidth int, bufferSize int) time.Duration {
 		delayMs := float64(bufferSize) / float64(bytesPerSecond) * 1000
 		return time.Duration(delayMs) * time.Millisecond
 	}
-	
+
 	// 对于大多数情况，不需要额外延迟
 	return 0
 }

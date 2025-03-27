@@ -166,7 +166,7 @@ type Claims struct {
 }
 
 // 身份验证中间件
-func AuthMiddleware() gin.HandlerFunc {
+func TokenAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 从请求中获取会话Cookie
 		sessionCookie, err := c.Cookie("session")

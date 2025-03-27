@@ -13,8 +13,8 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
-// JWTClaims 定义JWT声明结构
-type JWTClaims struct {
+// MiddlewareJWTClaims 定义JWT声明结构
+type MiddlewareJWTClaims struct {
 	UserID string `json:"user_id"`
 	Role   string `json:"role"`
 	jwt.StandardClaims
@@ -50,9 +50,9 @@ func AuthMiddleware() gin.HandlerFunc {
 }
 
 // ValidateJWTToken 验证JWT令牌
-func ValidateJWTToken(tokenString string) (*JWTClaims, error) {
+func ValidateJWTToken(tokenString string) (*MiddlewareJWTClaims, error) {
 	// 解析令牌
-	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &MiddlewareJWTClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// 使用环境变量或配置文件中的密钥
 		jwtSecretKey := os.Getenv("JWT_SECRET_KEY")
 		if jwtSecretKey == "" {
@@ -66,7 +66,7 @@ func ValidateJWTToken(tokenString string) (*JWTClaims, error) {
 	}
 
 	// 验证并返回claims
-	if claims, ok := token.Claims.(*JWTClaims); ok && token.Valid {
+	if claims, ok := token.Claims.(*MiddlewareJWTClaims); ok && token.Valid {
 		return claims, nil
 	}
 
@@ -216,7 +216,7 @@ func SecurityLoggingMiddleware() gin.HandlerFunc {
 func CourseAccessMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 获取课程ID和用户ID
-		courseID := c.Param("courseId")
+		_ = c.Param("courseId") // 当前未使用但将来会用到
 		userID, exists := c.Get("user_id")
 
 		if !exists {
@@ -229,7 +229,10 @@ func CourseAccessMiddleware() gin.HandlerFunc {
 		// 检查访问权限
 		// 在实际应用中，这里应该查询数据库
 		// hasAccess, err := CheckCourseAccess(userID.(string), courseID)
-		
+
+		// 记录日志以使用userID变量
+		fmt.Printf("用户 %v 正在访问课程资源\n", userID)
+
 		// 简化的权限检查 - 开发环境示例
 		hasAccess := true
 		var err error = nil

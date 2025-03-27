@@ -13,5 +13,7 @@ func RegisterAllMigrations() {
 // Function aliases to allow usage in other migration files
 var (
 	RegisterMigration = database.RegisterMigration
-	MigrationFunc     = database.MigrationFunc
 )
+
+// MigrationFunc 是数据库迁移函数的类型别名
+type MigrationFunc = database.MigrationFunc
