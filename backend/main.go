@@ -28,13 +28,24 @@ func main() {
 
 	// 初始化数据库连接
 	if err := database.InitDB(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer database.CloseDB()
+		// 开发模式下不因数据库错误退出，而是打印警告
+		if os.Getenv("GIN_MODE") != "release" {
+			log.Printf("警告: 数据库初始化失败: %v", err)
+			log.Println("继续执行，某些依赖数据库的功能可能不可用")
+		} else {
+			// 生产环境仍然强制退出
+			log.Fatalf("Failed to initialize database: %v", err)
+		}
+	} else {
+		log.Println("数据库连接成功")
+		defer database.CloseDB()
 
-	// 执行数据库迁移
-	if err := database.RunMigrations(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		// 执行数据库迁移
+		if err := database.RunMigrations(); err != nil {
+			log.Printf("警告: 数据库迁移失败: %v", err)
+		} else {
+			log.Println("数据库迁移完成")
+		}
 	}
 
 	// 设置Gin模式

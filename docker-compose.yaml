@@ -1,0 +1,35 @@
+# 最新版Docker Compose配置文件
+name: language-learning-audio-player
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: audio_player_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: audio_user
+      POSTGRES_PASSWORD: audio_password
+      POSTGRES_DB: audio_player
+      PGDATA: /var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audio_user -d audio_player"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - app_network
+
+volumes:
+  postgres_data:
+    name: audio_player_postgres_data
+
+networks:
+  app_network:
+    driver: bridge
+    name: audio_player_network 
