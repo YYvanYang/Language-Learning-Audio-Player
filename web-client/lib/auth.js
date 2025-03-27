@@ -2,7 +2,6 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
 
 // 创建认证上下文
 const AuthContext = createContext(null);
@@ -45,7 +44,7 @@ export function AuthProvider({ children }) {
         if (storedUser) {
           try {
             setUser(JSON.parse(storedUser));
-          } catch (e) {
+          } catch (_) {
             localStorage.removeItem('user');
             setUser(null);
           }
@@ -126,27 +125,80 @@ export function useAuth() {
 }
 
 /**
+ * 字符串转ArrayBuffer
+ */
+const str2ab = (str) => {
+  const encoder = new TextEncoder();
+  return encoder.encode(str);
+};
+
+/**
+ * ArrayBuffer转Base64
+ */
+const ab2base64 = (buffer) => {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+};
+
+/**
+ * 从密钥字符串生成加密密钥
+ */
+const getKeyFromString = async (keyString) => {
+  const keyData = str2ab(keyString);
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', keyData);
+  
+  return window.crypto.subtle.importKey(
+    'raw', 
+    hashBuffer,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt']
+  );
+};
+
+/**
  * 生成用于API请求的安全令牌
  * 
  * @param {Object} payload - 包含请求详情的对象
- * @returns {string} 加密后的令牌
+ * @returns {Promise<string>} 加密后的令牌
  */
-export const generateToken = (payload) => {
+export const generateToken = async (payload) => {
+  // 确保仅在浏览器环境中运行
+  if (typeof window === 'undefined') {
+    throw new Error('generateToken只能在客户端使用');
+  }
+
   // 获取保存在环境变量中的密钥
   const secretKey = process.env.NEXT_PUBLIC_AUTH_CLIENT_KEY || 'default-key-for-development-only';
   
   // 添加随机盐和有效期以增强安全性
   const enhancedPayload = {
     ...payload,
-    nonce: Math.random().toString(36).substring(2, 15),
+    nonce: Array.from(window.crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2, '0')).join(''),
     exp: Date.now() + 300000, // 5分钟有效期
   };
 
-  // 使用AES算法加密
-  return CryptoJS.AES.encrypt(
-    JSON.stringify(enhancedPayload),
-    secretKey
-  ).toString();
+  // 生成加密密钥
+  const cryptoKey = await getKeyFromString(secretKey);
+  
+  // 生成IV (初始化向量)
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  
+  // 使用AES-GCM加密
+  const encoder = new TextEncoder();
+  const encodedData = encoder.encode(JSON.stringify(enhancedPayload));
+  
+  const encryptedBuffer = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    cryptoKey,
+    encodedData
+  );
+  
+  // 将IV和加密数据合并，并转为Base64
+  const resultBuffer = new Uint8Array(iv.length + new Uint8Array(encryptedBuffer).length);
+  resultBuffer.set(iv, 0);
+  resultBuffer.set(new Uint8Array(encryptedBuffer), iv.length);
+  
+  return ab2base64(resultBuffer);
 };
 
 /**
@@ -159,7 +211,7 @@ export const parseErrorResponse = async (response) => {
   try {
     const data = await response.json();
     return data.message || data.error || '请求失败';
-  } catch (e) {
+  } catch (_) {
     return `请求失败: ${response.status}`;
   }
 };

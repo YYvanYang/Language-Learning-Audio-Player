@@ -54,7 +54,7 @@ const TrackManager = ({
     
     try {
       // 创建访问令牌
-      const token = generateToken({
+      const token = await generateToken({
         courseId,
         unitId,
         trackId: track.id,
@@ -114,7 +114,7 @@ const TrackManager = ({
       }
       
       // 创建访问令牌
-      const token = generateToken({
+      const token = await generateToken({
         courseId,
         unitId,
         trackId: track.id,
@@ -162,7 +162,7 @@ const TrackManager = ({
     
     try {
       // 创建访问令牌
-      const token = generateToken({
+      const token = await generateToken({
         courseId,
         unitId,
         trackId: track.id,

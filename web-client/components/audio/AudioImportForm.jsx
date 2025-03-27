@@ -62,7 +62,7 @@ const AudioImportForm = ({ courseId, unitId, userId, onAudioImported }) => {
       setUploadError(null);
       
       // 创建访问令牌
-      const token = generateToken({
+      const token = await generateToken({
         courseId,
         unitId,
         userId,

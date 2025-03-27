@@ -172,7 +172,7 @@ const AudioPlayer = ({
     const fetchCourseData = async () => {
       try {
         // 创建访问令牌
-        const token = generateToken({
+        const token = await generateToken({
           courseId,
           unitId,
           userId,
@@ -233,7 +233,7 @@ const AudioPlayer = ({
       setError(null);
       
       // 生成令牌
-      const token = generateToken({
+      const token = await generateToken({
         courseId,
         unitId,
         trackId: tracks[trackIndex].id,
@@ -398,7 +398,7 @@ const AudioPlayer = ({
     
     try {
       // 创建访问令牌
-      const token = generateToken({
+      const token = await generateToken({
         courseId,
         unitId,
         trackId: tracks[trackIndex].id,
