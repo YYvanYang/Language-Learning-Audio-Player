@@ -34,35 +34,14 @@ export default function DashboardPage() {
         setIsCoursesLoading(true);
         console.log('开始加载课程数据...');
         
-        // 重试功能
-        let retries = 2; // 最多重试2次
-        let response;
-        
-        while (retries >= 0) {
-          try {
-            response = await fetch('/api/courses', {
-              method: 'GET',
-              credentials: 'include',
-              headers: {
-                'Accept': 'application/json'
-              }
-            });
-            
-            // 如果成功，跳出循环
-            break;
-          } catch (fetchError) {
-            console.error(`课程数据请求失败 (剩余重试次数: ${retries}):`, fetchError);
-            
-            if (retries === 0) {
-              // 最后一次重试也失败，抛出错误
-              throw fetchError;
-            }
-            
-            // 等待1秒后重试
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            retries--;
+        // 发送请求，只尝试一次
+        const response = await fetch('/api/courses', {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json'
           }
-        }
+        });
         
         console.log(`课程数据请求状态: ${response?.status || 'unknown'}`);
         
