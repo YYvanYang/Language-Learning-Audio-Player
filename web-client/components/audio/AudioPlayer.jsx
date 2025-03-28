@@ -602,6 +602,7 @@ const AudioPlayer = ({
   // 更新播放时间
   useEffect(() => {
     let animationFrame;
+    let lastReportTime = 0; // 记录上次上报时间
     
     const updateTime = () => {
       if (isPlaying && audioContextRef.current && audioBufferRef.current) {
@@ -611,6 +612,19 @@ const AudioPlayer = ({
         if (elapsedTime <= audioBufferRef.current.duration) {
           setCurrentTime(elapsedTime);
           pausedTimeRef.current = elapsedTime;
+          
+          // 定期上报播放进度（每10秒一次）
+          const now = Date.now();
+          if (now - lastReportTime > 10000 && tracks[currentTrack]) {
+            // 记录当前时间为上次上报时间
+            lastReportTime = now;
+            
+            // 计算完成率
+            const completionRate = (elapsedTime / audioBufferRef.current.duration) * 100;
+            
+            // 上报播放进度
+            reportPlaybackProgress(tracks[currentTrack].id, elapsedTime, completionRate);
+          }
           
           // 检查是否到达AB循环结束点
           if (isLoopActive && loopRegion) {
@@ -624,6 +638,10 @@ const AudioPlayer = ({
           
           animationFrame = requestAnimationFrame(updateTime);
         } else {
+          // 播放结束时也上报一次进度（完成率100%）
+          if (tracks[currentTrack]) {
+            reportPlaybackProgress(tracks[currentTrack].id, audioBufferRef.current.duration, 100);
+          }
           handlePlaybackEnded();
         }
       }
@@ -638,7 +656,34 @@ const AudioPlayer = ({
         cancelAnimationFrame(animationFrame);
       }
     };
-  }, [isPlaying, isLoopActive, loopRegion]);
+  }, [isPlaying, isLoopActive, loopRegion, currentTrack, tracks]);
+  
+  // 上报播放进度的函数
+  const reportPlaybackProgress = async (trackId, position, completionRate) => {
+    try {
+      // 防止无效参数
+      if (!trackId || position < 0 || completionRate < 0) return;
+      
+      // 发送播放进度到服务器
+      await fetch('/api/track-progress', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          trackId,
+          position,
+          completionRate
+        }),
+        credentials: 'include' // 包含凭证以通过认证
+      });
+      
+      // 不需要处理响应，这是个"即发即忘"的请求
+    } catch (error) {
+      // 只记录错误，不影响用户体验
+      console.error('上报播放进度失败:', error);
+    }
+  };
   
   // 加载当前轨道
   useEffect(() => {

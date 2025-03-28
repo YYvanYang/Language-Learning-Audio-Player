@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: process.env.BACKEND_URL || 'http://localhost:8080/api/:path*' // 默认后端地址
+        destination: 'http://localhost:8080/api/:path*' // 明确指定后端地址
       }
     ];
   }

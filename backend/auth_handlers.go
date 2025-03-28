@@ -30,7 +30,7 @@ type RegisterRequest struct {
 
 // JWT声明结构
 type JWTClaims struct {
-	UserID string `json:"userId"`
+	UserID string `json:"user_id"`
 	Email  string `json:"email"`
 	Role   string `json:"role"`
 	jwt.RegisteredClaims
@@ -83,6 +83,12 @@ func loginHandler(c *gin.Context) {
 		getEnv("COOKIE_SECURE", "false") == "true", // 仅HTTPS
 		true, // HTTP专用
 	)
+
+	// 添加调试信息
+	log.Printf("登录成功: 用户ID=%s, 令牌长度=%d", user.ID, len(token))
+	log.Printf("Cookie设置: auth_token, domain=%s, path=/, secure=%v, httpOnly=true",
+		getEnv("COOKIE_DOMAIN", ""),
+		getEnv("COOKIE_SECURE", "false") == "true")
 
 	// 返回用户信息（不包含敏感数据）
 	c.JSON(http.StatusOK, gin.H{

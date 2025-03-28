@@ -54,10 +54,7 @@ func ValidateJWTToken(tokenString string) (*MiddlewareJWTClaims, error) {
 	// 解析令牌
 	token, err := jwt.ParseWithClaims(tokenString, &MiddlewareJWTClaims{}, func(token *jwt.Token) (interface{}, error) {
 		// 使用环境变量或配置文件中的密钥
-		jwtSecretKey := os.Getenv("JWT_SECRET_KEY")
-		if jwtSecretKey == "" {
-			jwtSecretKey = "your-default-secret-key" // 开发环境的默认值
-		}
+		jwtSecretKey := getEnv("JWT_SECRET", "your-default-secret-key-replace-in-production")
 		return []byte(jwtSecretKey), nil
 	})
 

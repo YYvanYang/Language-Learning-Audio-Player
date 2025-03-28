@@ -32,21 +32,70 @@ export default function DashboardPage() {
     const loadCourses = async () => {
       try {
         setIsCoursesLoading(true);
+        console.log('开始加载课程数据...');
         
-        const response = await fetch('/api/courses', {
-          method: 'GET',
-          credentials: 'include',
-        });
+        // 重试功能
+        let retries = 2; // 最多重试2次
+        let response;
         
-        if (!response.ok) {
-          throw new Error('Failed to load courses');
+        while (retries >= 0) {
+          try {
+            response = await fetch('/api/courses/', {
+              method: 'GET',
+              credentials: 'include',
+              headers: {
+                'Accept': 'application/json'
+              }
+            });
+            
+            // 如果成功，跳出循环
+            break;
+          } catch (fetchError) {
+            console.error(`课程数据请求失败 (剩余重试次数: ${retries}):`, fetchError);
+            
+            if (retries === 0) {
+              // 最后一次重试也失败，抛出错误
+              throw fetchError;
+            }
+            
+            // 等待1秒后重试
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            retries--;
+          }
+        }
+        
+        console.log(`课程数据请求状态: ${response?.status || 'unknown'}`);
+        
+        if (!response?.ok) {
+          // 尝试读取错误响应
+          let errorMessage = '加载课程失败';
+          try {
+            const errorText = await response.text();
+            console.error('课程加载错误响应:', errorText);
+            errorMessage = `加载课程失败: ${response.status} - ${errorText}`;
+          } catch (e) {
+            console.error('无法读取错误响应:', e);
+          }
+          
+          console.log(errorMessage);
+          setCourses([]);
+          return;
         }
         
         const data = await response.json();
+        console.log('课程数据加载成功:', data);
         setCourses(data.courses || []);
       } catch (error) {
-        console.error('Error loading courses:', error);
-        toast.error('加载课程失败，请稍后重试');
+        console.error('课程加载错误:', error);
+        
+        // 提供更详细的错误诊断
+        if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+          console.error('网络请求失败，可能原因: 网络连接问题、CORS错误、服务器未响应等');
+          console.error('建议: 1. 检查后端服务是否运行 2. 检查网络连接 3. 检查浏览器控制台是否有CORS错误');
+        }
+        
+        // 默认显示空数据
+        setCourses([]);
       } finally {
         setIsCoursesLoading(false);
       }
@@ -62,21 +111,40 @@ export default function DashboardPage() {
     const loadRecentTracks = async () => {
       try {
         setIsTracksLoading(true);
+        console.log('开始加载最近播放记录...');
         
         const response = await fetch('/api/recent-tracks', {
           method: 'GET',
           credentials: 'include',
+          headers: {
+            'Accept': 'application/json'
+          }
         });
         
+        console.log(`最近播放记录请求状态: ${response.status}`);
+        
         if (!response.ok) {
-          throw new Error('Failed to load recent tracks');
+          // 尝试读取错误响应
+          let errorMessage = '加载最近播放记录失败';
+          try {
+            const errorText = await response.text();
+            console.error('最近播放记录错误响应:', errorText);
+            errorMessage = `加载最近播放记录失败: ${response.status} - ${errorText}`;
+          } catch (e) {
+            console.error('无法读取错误响应:', e);
+          }
+          
+          console.log(errorMessage);
+          setRecentTracks([]);
+          return;
         }
         
         const data = await response.json();
+        console.log('最近播放记录加载成功:', data);
         setRecentTracks(data.tracks || []);
       } catch (error) {
-        console.error('Error loading recent tracks:', error);
-        toast.error('加载最近播放记录失败');
+        console.error('最近播放记录加载错误:', error);
+        setRecentTracks([]);
       } finally {
         setIsTracksLoading(false);
       }

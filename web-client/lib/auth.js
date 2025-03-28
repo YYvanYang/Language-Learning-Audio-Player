@@ -17,35 +17,56 @@ export function AuthProvider({ children }) {
     // 检查会话状态
     async function checkSession() {
       try {
+        console.log('开始验证会话状态...');
+        
         const response = await fetch('/api/auth/validate', {
           method: 'GET',
-          credentials: 'include'
+          credentials: 'include', // 确保发送 cookies
+          headers: {
+            'Accept': 'application/json'
+          }
         });
+        
+        console.log(`会话验证响应状态: ${response.status}`);
         
         if (response.ok) {
           const data = await response.json();
+          console.log('会话验证成功:', data);
+          
           if (data.valid) {
             setUser(data.user);
             
             // 同时保存到本地存储作为备份
             localStorage.setItem('user', JSON.stringify(data.user));
           } else {
+            console.log('会话无效，清除用户状态');
             setUser(null);
             localStorage.removeItem('user');
           }
         } else {
+          console.log('会话验证失败，响应状态:', response.status);
+          // 尝试读取响应内容以获取更多错误信息
+          try {
+            const errorText = await response.text();
+            console.error('验证失败响应体:', errorText);
+          } catch (e) {
+            console.error('无法读取验证失败响应:', e);
+          }
+          
           setUser(null);
           localStorage.removeItem('user');
         }
       } catch (err) {
-        console.error('Session validation error:', err);
+        console.error('会话验证请求失败:', err);
         
         // 如果API请求失败，尝试从本地存储获取
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
           try {
+            console.log('尝试从本地存储恢复用户信息');
             setUser(JSON.parse(storedUser));
           } catch (parseError) {
+            console.error('解析本地存储的用户数据失败:', parseError);
             localStorage.removeItem('user');
             setUser(null);
           }

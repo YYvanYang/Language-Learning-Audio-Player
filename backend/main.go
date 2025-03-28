@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -42,6 +43,13 @@ func main() {
 		migrations.RegisterAllMigrations()
 		if err := database.RunMigrations(); err != nil {
 			log.Printf("警告: 数据库迁移失败: %v", err)
+			// 如果迁移失败，直接创建所需表结构
+			log.Println("尝试直接创建必要的表结构...")
+			if err := createBasicTables(); err != nil {
+				log.Printf("创建表结构失败: %v", err)
+			} else {
+				log.Println("成功创建基本表结构")
+			}
 		} else {
 			log.Println("数据库迁移完成")
 		}
@@ -209,6 +217,10 @@ func setupRouter() *gin.Engine {
 		courseRoutes.GET("/:courseId/units/:unitId/tracks", AuthMiddleware(), CourseAccessMiddleware(), getUnitTracksHandler)
 	}
 
+	// 用户数据路由
+	v1.GET("/recent-tracks", AuthMiddleware(), getRecentTracksHandler)
+	v1.POST("/track-progress", AuthMiddleware(), updateTrackProgressHandler)
+
 	// 系统管理路由
 	adminRoutes := v1.Group("/admin")
 	{
@@ -241,4 +253,108 @@ func AdminMiddleware() gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// createBasicTables 直接创建必要的基本表结构
+func createBasicTables() error {
+	log.Println("开始创建基本表结构...")
+
+	// 创建tracks表
+	_, err := database.DB.Exec(`
+	CREATE TABLE IF NOT EXISTS tracks (
+		id VARCHAR(50) PRIMARY KEY,
+		unit_id VARCHAR(50),
+		title VARCHAR(255) NOT NULL,
+		description TEXT,
+		file_name VARCHAR(255) NOT NULL,
+		file_path VARCHAR(255) NOT NULL,
+		file_size BIGINT NOT NULL,
+		duration FLOAT NOT NULL,
+		format VARCHAR(50) NOT NULL,
+		sample_rate INTEGER,
+		channels INTEGER,
+		bit_rate INTEGER,
+		waveform_path VARCHAR(255),
+		transcript_path VARCHAR(255),
+		has_transcript BOOLEAN NOT NULL DEFAULT FALSE,
+		sequence INTEGER NOT NULL DEFAULT 0,
+		is_system BOOLEAN NOT NULL DEFAULT TRUE,
+		created_by VARCHAR(50),
+		created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+	)`)
+	if err != nil {
+		return fmt.Errorf("创建tracks表失败: %w", err)
+	}
+	log.Println("成功创建tracks表")
+
+	// 创建user_progress表
+	_, err = database.DB.Exec(`
+	CREATE TABLE IF NOT EXISTS user_progress (
+		id VARCHAR(50) PRIMARY KEY,
+		user_id VARCHAR(50),
+		track_id VARCHAR(50),
+		last_position FLOAT NOT NULL DEFAULT 0,
+		play_count INTEGER NOT NULL DEFAULT 0,
+		completion_rate FLOAT NOT NULL DEFAULT 0,
+		last_accessed TIMESTAMP WITH TIME ZONE NOT NULL,
+		created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		UNIQUE(user_id, track_id)
+	)`)
+	if err != nil {
+		return fmt.Errorf("创建user_progress表失败: %w", err)
+	}
+	log.Println("成功创建user_progress表")
+
+	// 创建courses表
+	_, err = database.DB.Exec(`
+	CREATE TABLE IF NOT EXISTS courses (
+		id VARCHAR(50) PRIMARY KEY,
+		title VARCHAR(255) NOT NULL,
+		description TEXT,
+		level VARCHAR(50),
+		language VARCHAR(50) NOT NULL,
+		cover_image VARCHAR(255),
+		published BOOLEAN NOT NULL DEFAULT FALSE,
+		created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		created_by VARCHAR(50)
+	)`)
+	if err != nil {
+		return fmt.Errorf("创建courses表失败: %w", err)
+	}
+	log.Println("成功创建courses表")
+
+	// 创建user_courses表
+	_, err = database.DB.Exec(`
+	CREATE TABLE IF NOT EXISTS user_courses (
+		user_id VARCHAR(50),
+		course_id VARCHAR(50),
+		granted_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		PRIMARY KEY (user_id, course_id)
+	)`)
+	if err != nil {
+		return fmt.Errorf("创建user_courses表失败: %w", err)
+	}
+	log.Println("成功创建user_courses表")
+
+	// 创建units表
+	_, err = database.DB.Exec(`
+	CREATE TABLE IF NOT EXISTS units (
+		id VARCHAR(50) PRIMARY KEY,
+		course_id VARCHAR(50),
+		title VARCHAR(255) NOT NULL,
+		description TEXT,
+		sequence INTEGER NOT NULL DEFAULT 0,
+		published BOOLEAN NOT NULL DEFAULT FALSE,
+		created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+		updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+	)`)
+	if err != nil {
+		return fmt.Errorf("创建units表失败: %w", err)
+	}
+	log.Println("成功创建units表")
+
+	return nil
 }

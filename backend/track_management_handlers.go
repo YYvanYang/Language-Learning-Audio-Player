@@ -7,7 +7,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"time"
 
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database"
 	"github.com/gin-gonic/gin"
 )
 
@@ -37,7 +40,7 @@ func updateTrackHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -101,7 +104,7 @@ func reorderTrackHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -164,7 +167,7 @@ func deleteTrackHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -249,4 +252,115 @@ func getAudioInfo(courseID, unitID, trackID string) (*AudioInfo, error) {
 	}
 
 	return &audioInfo, nil
+}
+
+// 获取用户最近播放的音轨
+func getRecentTracksHandler(c *gin.Context) {
+	// 获取当前用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权访问"})
+		return
+	}
+
+	// 查询参数
+	limit := 10 // 默认返回10条记录
+	if limitParam := c.Query("limit"); limitParam != "" {
+		parsedLimit, err := strconv.Atoi(limitParam)
+		if err == nil && parsedLimit > 0 && parsedLimit <= 50 {
+			limit = parsedLimit
+		}
+	}
+
+	// 执行查询，获取用户最近播放的音轨
+	query := `
+	SELECT 
+		up.id, up.user_id, up.track_id, 
+		up.last_position, up.play_count, up.completion_rate, 
+		up.last_accessed, t.title, t.duration, t.format,
+		c.title as course_name, u.title as unit_name
+	FROM 
+		user_progress up
+	JOIN 
+		tracks t ON up.track_id = t.id
+	LEFT JOIN
+		units u ON t.unit_id = u.id
+	LEFT JOIN
+		courses c ON u.course_id = c.id
+	WHERE 
+		up.user_id = $1
+	ORDER BY 
+		up.last_accessed DESC
+	LIMIT $2
+	`
+
+	// 转换userID为字符串
+	userIDStr, ok := userID.(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无效的用户ID"})
+		return
+	}
+
+	// 检查tracks表是否存在
+	var tableExists bool
+	err := database.DB.Get(&tableExists, `
+		SELECT EXISTS (
+			SELECT 1 
+			FROM information_schema.tables 
+			WHERE table_schema = 'public' 
+			AND table_name = 'tracks'
+		)
+	`)
+	if err != nil {
+		fmt.Printf("检查tracks表失败: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查数据库表失败"})
+		return
+	}
+
+	if !tableExists {
+		fmt.Println("数据库中不存在tracks表!")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "tracks表不存在"})
+		return
+	}
+
+	rows, err := database.DB.Queryx(query, userIDStr, limit)
+	if err != nil {
+		fmt.Printf("获取最近播放记录失败: %v\n", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "获取播放记录失败"})
+		return
+	}
+	defer rows.Close()
+
+	type RecentTrack struct {
+		ID             string    `json:"id" db:"track_id"`
+		Title          string    `json:"title" db:"title"`
+		Duration       float64   `json:"duration" db:"duration"`
+		Format         string    `json:"format" db:"format"`
+		LastPosition   float64   `json:"lastPosition" db:"last_position"`
+		PlayCount      int       `json:"playCount" db:"play_count"`
+		LastAccessed   time.Time `json:"lastAccessed" db:"last_accessed"`
+		CourseName     string    `json:"courseName" db:"course_name"`
+		UnitName       string    `json:"unitName" db:"unit_name"`
+		CompletionRate float64   `json:"completionRate" db:"completion_rate"`
+	}
+
+	var tracks []RecentTrack
+	for rows.Next() {
+		var track RecentTrack
+		if err := rows.StructScan(&track); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "解析播放记录失败"})
+			return
+		}
+		tracks = append(tracks, track)
+	}
+
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "查询播放记录时发生错误"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"tracks": tracks,
+		"count":  len(tracks),
+	})
 }

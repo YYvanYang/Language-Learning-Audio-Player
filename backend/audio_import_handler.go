@@ -86,7 +86,7 @@ func importAudioHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return

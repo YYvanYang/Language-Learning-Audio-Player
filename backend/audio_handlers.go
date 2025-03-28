@@ -2,6 +2,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database"
 	"github.com/gin-gonic/gin"
 )
 
@@ -103,7 +105,7 @@ func getAudioTokenHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -371,7 +373,7 @@ func getTracksHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -431,7 +433,7 @@ func getUnitHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -776,7 +778,7 @@ func getAudioMetadataHandler(c *gin.Context) {
 	}
 
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -1006,7 +1008,7 @@ func getUserAudioCustomData(userID, trackID string) (map[string]interface{}, err
 // 音频上传处理程序
 func uploadAudioHandler(c *gin.Context) {
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -1248,7 +1250,7 @@ func saveUserTrack(track UserTrackInfo) error {
 // 获取用户音轨列表处理程序
 func getUserTracksHandler(c *gin.Context) {
 	// 获取当前已验证的用户ID
-	userID, exists := c.Get("userId")
+	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权的访问"})
 		return
@@ -1944,4 +1946,93 @@ func determineWriteDelay(bandwidth int, bufferSize int) time.Duration {
 
 	// 对于大多数情况，不需要额外延迟
 	return 0
+}
+
+// TrackProgressRequest 更新音轨进度的请求结构
+type TrackProgressRequest struct {
+	TrackID        string  `json:"trackId" binding:"required"`
+	Position       float64 `json:"position" binding:"required,min=0"`
+	CompletionRate float64 `json:"completionRate" binding:"min=0,max=100"`
+}
+
+// 更新音轨播放进度
+func updateTrackProgressHandler(c *gin.Context) {
+	// 获取当前用户ID
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "未授权访问"})
+		return
+	}
+
+	// 解析请求体
+	var req TrackProgressRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数", "details": err.Error()})
+		return
+	}
+
+	// 获取当前时间
+	now := time.Now()
+
+	// 转换userID为字符串
+	userIDStr, ok := userID.(string)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "无效的用户ID"})
+		return
+	}
+
+	// 检查是否存在该用户的播放记录
+	var count int
+	err := database.DB.Get(&count, `SELECT COUNT(*) FROM user_progress WHERE user_id = $1 AND track_id = $2`,
+		userIDStr, req.TrackID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "检查播放记录失败"})
+		return
+	}
+
+	var result sql.Result
+	if count > 0 {
+		// 更新现有记录
+		result, err = database.DB.Exec(`
+			UPDATE user_progress 
+			SET 
+				last_position = $1, 
+				completion_rate = $2, 
+				last_accessed = $3,
+				play_count = play_count + 1,
+				updated_at = $3
+			WHERE user_id = $4 AND track_id = $5
+		`, req.Position, req.CompletionRate, now, userIDStr, req.TrackID)
+	} else {
+		// 创建新记录
+		id := fmt.Sprintf("prog_%d", time.Now().UnixNano())
+		result, err = database.DB.Exec(`
+			INSERT INTO user_progress (
+				id, user_id, track_id, last_position, 
+				play_count, completion_rate, last_accessed, 
+				created_at, updated_at
+			) VALUES (
+				$1, $2, $3, $4, 1, $5, $6, $6, $6
+			)
+		`, id, userIDStr, req.TrackID, req.Position, req.CompletionRate, now)
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新播放进度失败"})
+		return
+	}
+
+	// 检查是否成功更新
+	rowsAffected, err := result.RowsAffected()
+	if err != nil || rowsAffected == 0 {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新播放进度失败"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "播放进度已更新",
+		"trackId":   req.TrackID,
+		"position":  req.Position,
+		"updatedAt": now,
+	})
 }
