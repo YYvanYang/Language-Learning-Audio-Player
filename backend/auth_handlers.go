@@ -25,6 +25,7 @@ type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
 	Password string `json:"password" binding:"required,min=8"`
 	Name     string `json:"name" binding:"required"`
+	Username string `json:"username" binding:"omitempty"`
 }
 
 // JWT声明结构
@@ -108,6 +109,11 @@ func registerHandler(c *gin.Context) {
 	}
 
 	log.Printf("注册请求数据: email=%s, name=%s", req.Email, req.Name)
+
+	// 如果name为空但username不为空，则使用username
+	if req.Name == "" && req.Username != "" {
+		req.Name = req.Username
+	}
 
 	// 创建用户仓库
 	userRepo := models.NewUserRepository(database.DB)
