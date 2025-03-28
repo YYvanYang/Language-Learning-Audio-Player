@@ -40,7 +40,7 @@ export default function DashboardPage() {
         
         while (retries >= 0) {
           try {
-            response = await fetch('/api/courses/', {
+            response = await fetch('/api/courses', {
               method: 'GET',
               credentials: 'include',
               headers: {
