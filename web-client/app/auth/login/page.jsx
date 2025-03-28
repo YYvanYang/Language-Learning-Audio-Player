@@ -8,12 +8,13 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/Card';
 import { toast } from '@/components/ui/toast';
-import { login } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/';
+  const { login } = useAuth();
   
   const [formData, setFormData] = useState({
     username: '',
