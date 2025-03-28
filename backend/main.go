@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,7 +15,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database"
-	_ "github.com/YYvanYang/Language-Learning-Audio-Player/backend/database/migrations" // 引入所有迁移
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database/migrations"
 )
 
 func main() {
@@ -26,21 +27,19 @@ func main() {
 	// 初始化随机数种子
 	initRandomSeed()
 
-	// 初始化数据库连接
-	if err := database.InitDB(); err != nil {
-		// 开发模式下不因数据库错误退出，而是打印警告
-		if os.Getenv("GIN_MODE") != "release" {
-			log.Printf("警告: 数据库初始化失败: %v", err)
-			log.Println("继续执行，某些依赖数据库的功能可能不可用")
-		} else {
-			// 生产环境仍然强制退出
-			log.Fatalf("Failed to initialize database: %v", err)
-		}
-	} else {
-		log.Println("数据库连接成功")
-		defer database.CloseDB()
+	// 确保存储目录存在
+	createStorageDirectories()
 
-		// 执行数据库迁移
+	// 初始化数据库连接
+	log.Println("正在连接数据库...")
+	if err := database.InitDB(); err != nil {
+		log.Printf("警告: 数据库初始化失败: %v", err)
+		log.Println("将使用内存模式继续运行")
+		// 继续执行，但使用临时存储
+	} else {
+		// 运行数据库迁移
+		log.Println("正在运行数据库迁移...")
+		migrations.RegisterAllMigrations()
 		if err := database.RunMigrations(); err != nil {
 			log.Printf("警告: 数据库迁移失败: %v", err)
 		} else {
@@ -48,24 +47,120 @@ func main() {
 		}
 	}
 
-	// 设置Gin模式
-	if os.Getenv("GIN_MODE") == "release" {
-		gin.SetMode(gin.ReleaseMode)
+	// 设置Gin路由
+	router := setupRouter()
+
+	// 设置静态文件服务 - 仅用于开发环境
+	if gin.Mode() != gin.ReleaseMode {
+		router.Static("/static", "./static")
 	}
 
-	// 创建Gin引擎
+	// 获取端口
+	port := getEnv("PORT", "8080")
+
+	// 创建HTTP服务器
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: router,
+	}
+
+	// 优雅关闭服务器
+	go func() {
+		// 启动服务器
+		log.Printf("Server is running on http://localhost:%s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server error: %s", err)
+		}
+	}()
+
+	// 监听中断信号
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down server...")
+
+	// 设置超时上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 优雅关闭服务器
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server shutdown error: %s", err)
+	}
+
+	log.Println("Server exited")
+}
+
+// 初始化随机数种子
+func initRandomSeed() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+// 创建必要的存储目录
+func createStorageDirectories() {
+	dirs := []string{
+		"storage/audio",
+		"storage/audio/uploads",
+		"storage/audio/processed",
+		"storage/audio/transcoded", // 新增的转码文件目录
+		"storage/audio/transcoded/high",
+		"storage/audio/transcoded/medium",
+		"storage/audio/transcoded/low",
+		"storage/audio/transcoded/very_low",
+		"storage/temp",
+		"storage/tracks",
+	}
+
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("Failed to create directory: %s, error: %s", dir, err)
+		}
+	}
+}
+
+// 获取环境变量或默认值
+func getEnv(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
+// 设置路由
+func setupRouter() *gin.Engine {
 	router := gin.Default()
 
-	// 应用自定义中间件
+	// 全局中间件
+	// 1. CORS 中间件
 	router.Use(CORSMiddleware())
+	// 2. 安全标头中间件
 	router.Use(SecurityHeadersMiddleware())
+	// 3. 安全日志中间件
 	router.Use(SecurityLoggingMiddleware())
 
-	// 确保存储目录存在
-	createStorageDirectories()
-
-	// 设置API版本
+	// API版本组
 	v1 := router.Group("/api")
+
+	// 健康检查路由
+	v1.GET("/health", func(c *gin.Context) {
+		// 检查数据库连接
+		dbStatus := "healthy"
+		if database.DB != nil {
+			if err := database.DB.Ping(); err != nil {
+				dbStatus = "unhealthy: " + err.Error()
+			}
+		} else {
+			dbStatus = "not initialized"
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ok",
+			"db":      dbStatus,
+			"version": "1.0.0",
+		})
+	})
 
 	// 音频相关路由
 	audioRoutes := v1.Group("/audio")
@@ -131,82 +226,7 @@ func main() {
 		adminRoutes.GET("/stats", getSystemStatsHandler)
 	}
 
-	// 设置静态文件服务 - 仅用于开发环境
-	if gin.Mode() != gin.ReleaseMode {
-		router.Static("/static", "./static")
-	}
-
-	// 获取端口
-	port := getEnv("PORT", "8080")
-
-	// 创建HTTP服务器
-	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: router,
-	}
-
-	// 优雅关闭服务器
-	go func() {
-		// 启动服务器
-		log.Printf("Server is running on http://localhost:%s", port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %s", err)
-		}
-	}()
-
-	// 监听中断信号
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Println("Shutting down server...")
-
-	// 设置超时上下文
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// 优雅关闭服务器
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server shutdown error: %s", err)
-	}
-
-	log.Println("Server exited")
-}
-
-// 初始化随机数种子
-func initRandomSeed() {
-	time.Now().UnixNano()
-}
-
-// 创建必要的存储目录
-func createStorageDirectories() {
-	dirs := []string{
-		"storage/audio",
-		"storage/audio/uploads",
-		"storage/audio/processed",
-		"storage/audio/transcoded", // 新增的转码文件目录
-		"storage/audio/transcoded/high",
-		"storage/audio/transcoded/medium",
-		"storage/audio/transcoded/low",
-		"storage/audio/transcoded/very_low",
-		"storage/temp",
-		"storage/tracks",
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			log.Fatalf("Failed to create directory: %s, error: %s", dir, err)
-		}
-	}
-}
-
-// 获取环境变量或默认值
-func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-	return value
+	return router
 }
 
 // AdminMiddleware 管理员权限中间件

@@ -4,12 +4,13 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
 // 创建认证上下文
-const AuthContext = createContext(null);
+const AuthContext = createContext({});
 
 // 认证提供者组件
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   
   // 在组件挂载时检查会话状态
   useEffect(() => {
@@ -44,7 +45,7 @@ export function AuthProvider({ children }) {
         if (storedUser) {
           try {
             setUser(JSON.parse(storedUser));
-          } catch (_) {
+          } catch (parseError) {
             localStorage.removeItem('user');
             setUser(null);
           }
@@ -52,7 +53,7 @@ export function AuthProvider({ children }) {
           setUser(null);
         }
       } finally {
-        setIsLoading(false);
+        setLoading(false);
       }
     }
     
@@ -61,7 +62,8 @@ export function AuthProvider({ children }) {
   
   // 登录功能
   const login = async (email, password) => {
-    setIsLoading(true);
+    setError(null);
+    setLoading(true);
     try {
       console.log(`尝试登录: ${email}`);
 
@@ -102,47 +104,48 @@ export function AuthProvider({ children }) {
       // 保存到本地存储作为备份
       localStorage.setItem('user', JSON.stringify(data.user));
       
-      return { success: true };
+      return { success: true, data };
     } catch (err) {
       console.error('登录错误详情:', err);
+      setError(err.message);
       return { success: false, error: err.message };
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
   
   // 注册功能
   const register = async (userData) => {
-    setIsLoading(true);
+    setError(null);
+    setLoading(true);
     try {
+      console.log('发送注册请求:', userData);
+      
       const response = await fetch('/api/auth/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(userData),
-        credentials: 'include'
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Registration failed');
-      }
-      
+
+      // 记录响应状态和内容
+      console.log('注册API响应状态:', response.status);
       const data = await response.json();
-      
-      // 如果注册后自动登录，设置用户
-      if (data.user) {
-        setUser(data.user);
-        localStorage.setItem('user', JSON.stringify(data.user));
+      console.log('注册API响应数据:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || '注册失败');
       }
-      
+
+      setUser(data.user);
       return { success: true, data };
-    } catch (err) {
-      console.error('Registration error:', err);
-      return { success: false, error: err.message };
+    } catch (error) {
+      console.error('注册过程发生错误:', error);
+      setError(error.message);
+      return { success: false, error: error.message };
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
   
@@ -155,21 +158,27 @@ export function AuthProvider({ children }) {
       });
       setUser(null);
       localStorage.removeItem('user');
+      return { success: true };
     } catch (err) {
       console.error('Logout error:', err);
+      setError(err.message);
+      return { success: false, error: err.message };
     }
   };
   
   // 提供认证上下文
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      isAuthenticated: !!user, 
-      isLoading, 
-      login, 
-      logout,
-      register 
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        error,
+        login,
+        register,
+        logout,
+        isAuthenticated: !!user,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -267,7 +276,7 @@ export const parseErrorResponse = async (response) => {
   try {
     const data = await response.json();
     return data.message || data.error || '请求失败';
-  } catch (_) {
+  } catch (jsonError) {
     return `请求失败: ${response.status}`;
   }
 };

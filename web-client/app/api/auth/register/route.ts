@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         email: body.email,
         password: body.password,
-        name: body.username || body.name || body.email.split('@')[0] // 使用用户名、姓名或邮箱前缀
+        name: body.username // 确保使用username字段作为name参数
       }),
     });
 

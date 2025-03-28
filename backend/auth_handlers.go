@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -97,33 +98,46 @@ func loginHandler(c *gin.Context) {
 
 // 注册处理程序
 func registerHandler(c *gin.Context) {
+	log.Printf("注册请求开始处理: %s", c.Request.RemoteAddr)
+
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("请求数据绑定失败: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求格式"})
 		return
 	}
 
+	log.Printf("注册请求数据: email=%s, name=%s", req.Email, req.Name)
+
 	// 创建用户仓库
 	userRepo := models.NewUserRepository(database.DB)
+	log.Printf("用户仓库创建成功")
 
 	// 检查邮箱是否已存在
 	exists, err := userRepo.CheckEmailExists(req.Email)
 	if err != nil {
+		log.Printf("检查邮箱存在性失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
 	}
 
 	if exists {
+		log.Printf("邮箱已被注册: %s", req.Email)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "邮箱已被注册"})
 		return
 	}
 
+	log.Printf("邮箱检查通过，开始生成密码哈希")
+
 	// 生成密码哈希
 	passwordHash, err := models.HashPassword(req.Password)
 	if err != nil {
+		log.Printf("密码哈希生成失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "密码处理失败"})
 		return
 	}
+
+	log.Printf("密码哈希生成成功，开始创建用户")
 
 	// 创建用户
 	user := &models.User{
@@ -135,16 +149,22 @@ func registerHandler(c *gin.Context) {
 	}
 
 	if err := userRepo.Create(user); err != nil {
+		log.Printf("创建用户失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建用户失败"})
 		return
 	}
 
+	log.Printf("用户创建成功: id=%s, 开始生成JWT令牌", user.ID)
+
 	// 创建JWT令牌
 	token, err := createJWTToken(user)
 	if err != nil {
+		log.Printf("JWT令牌创建失败: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "创建令牌失败"})
 		return
 	}
+
+	log.Printf("JWT令牌创建成功，开始设置Cookie")
 
 	// 设置Cookie
 	c.SetCookie(
@@ -156,6 +176,8 @@ func registerHandler(c *gin.Context) {
 		getEnv("COOKIE_SECURE", "false") == "true", // 仅HTTPS
 		true, // HTTP专用
 	)
+
+	log.Printf("注册成功完成，返回用户信息: id=%s, email=%s", user.ID, user.Email)
 
 	// 返回用户信息
 	c.JSON(http.StatusCreated, gin.H{
