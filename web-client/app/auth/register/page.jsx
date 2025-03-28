@@ -8,10 +8,11 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/Card';
 import { toast } from '@/components/ui/toast';
-import { register } from '@/lib/auth';
+import { useAuth } from '@/lib/auth';
 
 export default function RegisterPage() {
   const router = useRouter();
+  const { register } = useAuth();
   
   const [formData, setFormData] = useState({
     username: '',
@@ -74,13 +75,19 @@ export default function RegisterPage() {
     try {
       setIsLoading(true);
       
-      const result = await register(formData.username, formData.email, formData.password);
+      const userData = {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password
+      };
+      
+      const result = await register(userData);
       
       if (result.success) {
         toast.success('注册成功！请登录您的账户');
         router.push('/auth/login');
       } else {
-        toast.error(result.message || '注册失败，请稍后重试');
+        toast.error(result.error || '注册失败，请稍后重试');
       }
     } catch (error) {
       console.error('Registration error:', error);
@@ -118,6 +125,7 @@ export default function RegisterPage() {
                     value={formData.username}
                     onChange={handleChange}
                     placeholder="请输入用户名"
+                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
@@ -132,6 +140,7 @@ export default function RegisterPage() {
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="请输入电子邮箱"
+                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
@@ -146,6 +155,7 @@ export default function RegisterPage() {
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="请输入密码（至少8个字符）"
+                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
@@ -160,6 +170,7 @@ export default function RegisterPage() {
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     placeholder="请再次输入密码"
+                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 

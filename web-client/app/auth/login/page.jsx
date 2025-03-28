@@ -86,6 +86,7 @@ export default function LoginPage() {
                     value={formData.username}
                     onChange={handleChange}
                     placeholder="请输入用户名"
+                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
@@ -100,6 +101,7 @@ export default function LoginPage() {
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="请输入密码"
+                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 

@@ -91,6 +91,41 @@ export function AuthProvider({ children }) {
     }
   };
   
+  // 注册功能
+  const register = async (userData) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(userData),
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Registration failed');
+      }
+      
+      const data = await response.json();
+      
+      // 如果注册后自动登录，设置用户
+      if (data.user) {
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+      
+      return { success: true, data };
+    } catch (err) {
+      console.error('Registration error:', err);
+      return { success: false, error: err.message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
   // 退出登录功能
   const logout = async () => {
     try {
@@ -112,7 +147,8 @@ export function AuthProvider({ children }) {
       isAuthenticated: !!user, 
       isLoading, 
       login, 
-      logout 
+      logout,
+      register 
     }}>
       {children}
     </AuthContext.Provider>
