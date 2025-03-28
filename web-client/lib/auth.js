@@ -63,20 +63,40 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     setIsLoading(true);
     try {
+      console.log(`尝试登录: ${email}`);
+
+      // 构建请求体
+      const requestBody = { email, password };
+      console.log('请求体:', requestBody);
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify(requestBody),
         credentials: 'include'
       });
       
+      console.log(`登录响应状态: ${response.status}`);
+      
       if (!response.ok) {
-        throw new Error('Login failed');
+        // 尝试获取后端返回的详细错误信息
+        const errorText = await response.text();
+        console.error('登录失败响应:', errorText);
+        
+        let errorData = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          console.error('解析错误响应失败:', e);
+        }
+        
+        throw new Error(errorData.error || `登录失败(${response.status})`);
       }
       
       const data = await response.json();
+      console.log('登录成功:', data);
       setUser(data.user);
       
       // 保存到本地存储作为备份
@@ -84,7 +104,7 @@ export function AuthProvider({ children }) {
       
       return { success: true };
     } catch (err) {
-      console.error('Login error:', err);
+      console.error('登录错误详情:', err);
       return { success: false, error: err.message };
     } finally {
       setIsLoading(false);

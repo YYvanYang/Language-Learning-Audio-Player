@@ -17,7 +17,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: ''
   });
   
@@ -34,21 +34,21 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.username || !formData.password) {
-      toast.error('请填写用户名和密码');
+    if (!formData.email || !formData.password) {
+      toast.error('请填写邮箱和密码');
       return;
     }
     
     try {
       setIsLoading(true);
       
-      const result = await login(formData.username, formData.password);
+      const result = await login(formData.email, formData.password);
       
       if (result.success) {
         toast.success('登录成功！');
         router.push(redirect);
       } else {
-        toast.error(result.message || '登录失败，请检查用户名和密码');
+        toast.error(result.message || '登录失败，请检查邮箱和密码');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -76,16 +76,16 @@ export default function LoginPage() {
             <CardContent>
               <div className="space-y-4">
                 <div>
-                  <FormLabel htmlFor="username" required>用户名</FormLabel>
+                  <FormLabel htmlFor="email" required>邮箱</FormLabel>
                   <Input
-                    id="username"
-                    name="username"
-                    type="text"
-                    autoComplete="username"
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
                     required
-                    value={formData.username}
+                    value={formData.email}
                     onChange={handleChange}
-                    placeholder="请输入用户名"
+                    placeholder="请输入邮箱"
                     className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
