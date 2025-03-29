@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * WebAssembly 加载和管理工具
  */
@@ -17,16 +19,18 @@ export async function loadWasmAudioProcessor() {
   
   // 验证WebAssembly支持
   if (!isWebAssemblySupported()) {
-    throw new Error('您的浏览器不支持WebAssembly');
+    console.warn('您的浏览器不支持WebAssembly，将使用JavaScript降级版本');
+    wasmAudioProcessor = createFallbackProcessor();
+    return wasmAudioProcessor;
   }
   
   try {
-    // 开发环境路径调整
-    const wasmBasePath = '/wasm';
+    // 从环境变量获取WebAssembly路径
+    const wasmBasePath = process.env.NEXT_PUBLIC_WASM_PATH || '/wasm';
     
     // 动态导入WebAssembly模块
-    // 注意：这可能需要根据实际部署环境调整路径
-    const wasmModule = await import(`${wasmBasePath}/audio_processor.js`);
+    // 注意: 使用动态import时必须使用相对于根目录的绝对路径
+    const wasmModule = await import(/* webpackIgnore: true */ `${wasmBasePath}/audio_processor.js`);
     
     // 初始化WebAssembly模块
     await wasmModule.default();
@@ -39,7 +43,10 @@ export async function loadWasmAudioProcessor() {
     return wasmAudioProcessor;
   } catch (error) {
     console.error('WebAssembly加载失败:', error);
-    throw new Error('无法加载WebAssembly音频处理器');
+    // 如果加载失败，使用JavaScript降级版本
+    console.warn('切换到JavaScript降级实现');
+    wasmAudioProcessor = createFallbackProcessor();
+    return wasmAudioProcessor;
   }
 }
 
