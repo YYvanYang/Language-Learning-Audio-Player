@@ -1,24 +1,16 @@
-[package]
-name = "audio-processor"
-version = "0.1.0"
-authors = ["Language Learning Audio Player"]
-edition = "2021"
-description = "Rust WebAssembly audio processing library"
+[workspace]
+members = [
+    "audio_processor",
+]
+resolver = "2"  # 使用edition 2021的解析器
 
-[lib]
-crate-type = ["cdylib"]
-path = "lib.rs"
-
-[dependencies]
-wasm-bindgen = "0.2.86"
-js-sys = "0.3.63"
-web-sys = { version = "0.3.63", features = [
-  "console",
-] }
-serde = "1.0.158"
-serde_derive = "1.0.158"
-serde_json = "1.0.94"
+# 项目工作区配置
+# 这是主工作区配置文件，指定了项目包含的成员包
 
 [profile.release]
 opt-level = 3
-lto = true 
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1 

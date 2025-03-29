@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = "0.2.84"
 js-sys = "0.3.61"
 web-sys = { version = "0.3.61", features = [
+  "console",
   "AudioBuffer",
   "AudioContext",
   "AudioNode",
@@ -30,9 +31,7 @@ web-sys = { version = "0.3.61", features = [
   "ConvolverNode",
   "DelayNode",
   "DynamicsCompressorNode",
-  "Float32Array",
-  "Window",
-  "console"
+  "Window"
 ]}
 console_error_panic_hook = "0.1.7"
 serde = { version = "1.0", features = ["derive"] }

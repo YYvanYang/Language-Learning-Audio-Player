@@ -8,7 +8,7 @@
     "build": "cd web-client && npm run build",
     "dev:frontend": "cd web-client && npm run dev",
     "dev:backend": "cd backend && go run .",
-    "wasm:build": "cd RustWebAssembly && wasm-pack build --target web --out-dir ../web-client/public/wasm",
+    "wasm:build": "cd RustWebAssembly/audio_processor && wasm-pack build --target web --out-dir ../../web-client/public/wasm",
     "status": "node scripts/update-status.js",
     "status:completed": "node scripts/update-status.js add-completed",
     "status:pending": "node scripts/update-status.js add-pending",

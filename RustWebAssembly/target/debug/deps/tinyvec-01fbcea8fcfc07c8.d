@@ -1,0 +1,11 @@
+/Users/yvan/Language-Learning-Audio-Player/RustWebAssembly/target/debug/deps/libtinyvec-01fbcea8fcfc07c8.rmeta: /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/lib.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/array.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/array/generated_impl.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/arrayvec.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/arrayvec_drain.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/slicevec.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/tinyvec.rs
+
+/Users/yvan/Language-Learning-Audio-Player/RustWebAssembly/target/debug/deps/tinyvec-01fbcea8fcfc07c8.d: /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/lib.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/array.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/array/generated_impl.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/arrayvec.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/arrayvec_drain.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/slicevec.rs /Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/tinyvec.rs
+
+/Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/lib.rs:
+/Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/array.rs:
+/Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/array/generated_impl.rs:
+/Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/arrayvec.rs:
+/Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/arrayvec_drain.rs:
+/Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/slicevec.rs:
+/Users/yvan/.cargo/registry/src/index.crates.io-6f17d22bba15001f/tinyvec-1.9.0/src/tinyvec.rs:
