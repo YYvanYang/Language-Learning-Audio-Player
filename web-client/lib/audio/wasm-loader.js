@@ -2,16 +2,7 @@
  * WebAssembly 加载和管理工具
  */
 
-// 用于存储已加载的 WebAssembly 模块
-let wasmModule = null;
-let wasmInstance = null;
-let isLoading = false;
-let loadPromise = null;
-
-/**
- * WebAssembly处理器实例
- * @type {Object|null}
- */
+// WebAssembly处理器实例
 let wasmAudioProcessor = null;
 
 /**
@@ -67,17 +58,14 @@ export function isWebAssemblySupported() {
  * @returns {boolean} 是否已加载
  */
 export function isWasmLoaded() {
-  return wasmInstance !== null;
+  return wasmAudioProcessor !== null;
 }
 
 /**
  * 释放 WebAssembly 资源
  */
 export function unloadWasmAudioProcessor() {
-  wasmModule = null;
-  wasmInstance = null;
-  isLoading = false;
-  loadPromise = null;
+  releaseWasmProcessor();
 }
 
 /**
@@ -146,14 +134,12 @@ export function createFallbackProcessor() {
     /**
      * 应用均衡器
      * @param {Float32Array} audioData - 音频数据
-     * @param {number} bass - 低音增益
-     * @param {number} mid - 中音增益
-     * @param {number} treble - 高音增益
+     * @param {Object} settings - 均衡器设置 {bass, mid, treble}
      * @returns {Float32Array} 处理后的音频数据
      */
-    applyEqualizer: (audioData, bass, mid, treble) => {
-      // 这是一个非常简化的均衡器实现
-      // 实际均衡器需要更复杂的频域处理
+    applyEqualizer: (audioData, settings) => {
+      // 与Rust实现保持一致的接口
+      const { bass = 1.0, mid = 1.0, treble = 1.0 } = settings;
       const result = new Float32Array(audioData.length);
       
       for (let i = 0; i < audioData.length; i++) {
@@ -167,11 +153,11 @@ export function createFallbackProcessor() {
     /**
      * 音频压缩
      * @param {Float32Array} audioData - 音频数据
-     * @param {number} threshold - 阈值
-     * @param {number} ratio - 压缩比率
+     * @param {Object} settings - 压缩器设置 {threshold, ratio, attack, release, makeup_gain}
      * @returns {Float32Array} 处理后的音频数据
      */
-    applyCompression: (audioData, threshold, ratio) => {
+    applyCompression: (audioData, settings) => {
+      const { threshold = 0.5, ratio = 4, makeup_gain = 0 } = settings;
       const result = new Float32Array(audioData.length);
       
       for (let i = 0; i < audioData.length; i++) {
@@ -180,13 +166,42 @@ export function createFallbackProcessor() {
         
         if (amplitude > threshold) {
           const gain = threshold + (amplitude - threshold) / ratio;
-          result[i] = sample > 0 ? gain : -gain;
+          result[i] = (sample > 0 ? gain : -gain) * (10 ** (makeup_gain / 20));
         } else {
           result[i] = sample;
         }
       }
       
       return result;
+    },
+    
+    /**
+     * 分析音频
+     * @param {Float32Array} audioData - 音频数据
+     * @returns {Object} 音频特征
+     */
+    analyzeAudio: (audioData) => {
+      // 计算RMS
+      let sumSquares = 0;
+      for (let i = 0; i < audioData.length; i++) {
+        sumSquares += audioData[i] * audioData[i];
+      }
+      const rms = Math.sqrt(sumSquares / audioData.length);
+      
+      // 计算峰值
+      let peak = 0;
+      for (let i = 0; i < audioData.length; i++) {
+        const abs = Math.abs(audioData[i]);
+        if (abs > peak) peak = abs;
+      }
+      
+      return {
+        rms,
+        peak,
+        pitch: null, // JS降级版不支持音高检测
+        spectral_centroid: 0,
+        zero_crossing_rate: 0
+      };
     },
     
     /**
