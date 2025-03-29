@@ -200,7 +200,7 @@ export function AuthProvider({ children }) {
         isAuthenticated: !!user,
       }}
     >
-      {children}
+      {loading ? null : children}
     </AuthContext.Provider>
   );
 }
@@ -297,7 +297,7 @@ export const parseErrorResponse = async (response) => {
   try {
     const data = await response.json();
     return data.message || data.error || '请求失败';
-  } catch (jsonError) {
+  } catch (_jsonError) {
     return `请求失败: ${response.status}`;
   }
 };
