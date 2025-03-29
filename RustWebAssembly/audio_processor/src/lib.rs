@@ -1,4 +1,4 @@
-use fundsp::hacker::*;
+// 移除未使用的导入
 use pitch_detection::detector::mcleod::McLeodDetector;
 use pitch_detection::detector::PitchDetector;
 use realfft::RealFftPlanner;
@@ -9,7 +9,7 @@ use web_sys::{console, AudioBuffer};
 
 // 初始化 panic hook
 fn init_panic_hook() {
-    #[cfg(feature = "console_error_panic_hook")]
+    // 直接调用，无需条件编译
     console_error_panic_hook::set_once();
 }
 
@@ -112,14 +112,14 @@ impl AudioProcessor {
             // 数据点太少，需要插值
             for i in 0..num_points {
                 let idx = (i as f32 * audio_data.len() as f32 / num_points as f32) as usize;
-                result[i] = audio_data[idx.min(audio_data.len() - 1)].abs();
+                result[i] = audio_data[std::cmp::min(idx, audio_data.len() - 1)].abs();
             }
         } else {
             // 对每个点找出代表区间的最大振幅
             for i in 0..num_points {
                 let start = i * samples_per_point;
                 let end = (i + 1) * samples_per_point;
-                let end = end.min(audio_data.len());
+                let end = std::cmp::min(end, audio_data.len());
                 
                 let mut max_amp = 0.0;
                 for j in start..end {
@@ -139,7 +139,7 @@ impl AudioProcessor {
     // 应用均衡器
     #[wasm_bindgen]
     pub fn apply_equalizer(&self, audio_data: &mut [f32], settings: JsValue) -> Result<(), JsValue> {
-        let settings: EqualizerSettings = serde_wasm_bindgen::from_value(settings)?;
+        let settings: EqualizerSettings = serde_wasm_bindgen::from_value(settings.clone())?;
         
         // 仅当有需要时才处理
         if (settings.bass - 1.0).abs() < 0.01 && 
@@ -148,21 +148,39 @@ impl AudioProcessor {
             return Ok(());
         }
         
-        // 使用 fundsp 库构建三段均衡器
-        let eq = 
-            pass() // 直通
-            | (settings.bass * lp_butterworth::<f64>(2, 200.0 / 44100.0)) // 低通滤波器
-            | (settings.mid * bp_butterworth::<f64>(2, 1000.0 / 44100.0, 2.0)) // 带通滤波器
-            | (settings.treble * hp_butterworth::<f64>(2, 4000.0 / 44100.0)); // 高通滤波器
+        // 创建三段式均衡器
+        let mut bass_filter = IIRFilter::low_pass(200.0 / self.sample_rate as f32, 0.707);
+        let mut mid_filter = IIRFilter::peak(1000.0 / self.sample_rate as f32, 1.0, 
+                                          (settings.mid - 1.0) * 12.0); // 将线性增益转换为dB增益
+        let mut treble_filter = IIRFilter::high_pass(4000.0 / self.sample_rate as f32, 0.707);
         
-        // 设置初始状态
-        let mut eq = eq.reset();
+        // 计算增益系数
+        let bass_gain = settings.bass;
+        let treble_gain = settings.treble;
         
         // 处理音频
-        for sample in audio_data.iter_mut() {
-            let input = *sample as f64;
-            let output = eq.process(input);
-            *sample = output as f32;
+        let mut filtered_audio = vec![0.0; audio_data.len()];
+        
+        // 低频处理
+        for i in 0..audio_data.len() {
+            let bass = bass_filter.process(audio_data[i]) * bass_gain;
+            filtered_audio[i] += bass;
+        }
+        
+        // 中频处理 - 直接通过峰值滤波器
+        for i in 0..audio_data.len() {
+            filtered_audio[i] += mid_filter.process(audio_data[i]);
+        }
+        
+        // 高频处理
+        for i in 0..audio_data.len() {
+            let treble = treble_filter.process(audio_data[i]) * treble_gain;
+            filtered_audio[i] += treble;
+        }
+        
+        // 将处理后的音频写回原始缓冲区
+        for i in 0..audio_data.len() {
+            audio_data[i] = filtered_audio[i] / 3.0; // 均衡三段信号电平
         }
         
         Ok(())
@@ -213,7 +231,8 @@ impl AudioProcessor {
     // 音频降噪
     #[wasm_bindgen]
     pub fn denoise_audio(&self, audio_data: &mut [f32], noise_threshold: f32) -> Result<(), JsValue> {
-        let sample_rate = self.sample_rate;
+        // 移除未使用变量警告
+        let _sample_rate = self.sample_rate;
         let fft_size = 2048; // FFT大小
         let hop_size = fft_size / 4; // 帧移
         
@@ -424,14 +443,15 @@ impl AudioProcessor {
         
         count as f32 / (audio_data.len() as f32 - 1.0)
     }
-    
+
     // 实时处理一帧音频数据
     #[wasm_bindgen]
     pub fn process_audio_frame(&mut self, audio_frame: &mut [f32], settings: JsValue) -> Result<JsValue, JsValue> {
-        let eq_settings: EqualizerSettings = serde_wasm_bindgen::from_value(settings)?;
+        // 克隆settings避免移动
+        let settings_clone = settings.clone();
         
         // 应用均衡器处理
-        self.apply_equalizer(audio_frame, settings)?;
+        self.apply_equalizer(audio_frame, settings_clone)?;
         
         // 更新包络跟踪器（用于音量监测）
         let current_rms = self.calculate_rms(audio_frame);
@@ -448,9 +468,11 @@ impl AudioProcessor {
         }
         
         // 计算频谱并更新频谱变化历史
-        if let Some(spectrum_result) = self.analyze_spectrum(audio_frame) {
-            self.spectral_flux_history.remove(0);
-            self.spectral_flux_history.push(spectrum_result.spectral_flux);
+        if let Ok(spectrum_data) = self.analyze_spectrum_data(audio_frame) {
+            if let Ok(spectrum_result) = serde_wasm_bindgen::from_value::<SpectrumAnalysisResult>(spectrum_data) {
+                self.spectral_flux_history.remove(0);
+                self.spectral_flux_history.push(spectrum_result.spectral_flux);
+            }
         }
         
         // 创建返回状态
@@ -465,8 +487,8 @@ impl AudioProcessor {
     }
     
     // 频谱分析
-    #[wasm_bindgen]
-    pub fn analyze_spectrum(&mut self, audio_data: &[f32]) -> Option<SpectrumAnalysisResult> {
+    // 计算频谱分析结果，但不暴露给WebAssembly
+    fn analyze_spectrum_internal(&mut self, audio_data: &[f32]) -> Option<SpectrumAnalysisResult> {
         if audio_data.len() < 512 {
             return None;
         }
@@ -528,7 +550,7 @@ impl AudioProcessor {
         let spectral_flux = match &self.prev_spectrum {
             Some(prev) => {
                 // 限制到最小长度
-                let min_len = prev.len().min(magnitudes.len());
+                let min_len = std::cmp::min(prev.len(), magnitudes.len());
                 
                 // 计算频谱变化
                 let mut flux = 0.0;
@@ -555,6 +577,15 @@ impl AudioProcessor {
         })
     }
     
+    // 公开的WebAssembly接口，返回频谱分析结果
+    #[wasm_bindgen]
+    pub fn analyze_spectrum_data(&mut self, audio_data: &[f32]) -> Result<JsValue, JsValue> {
+        match self.analyze_spectrum_internal(audio_data) {
+            Some(result) => Ok(serde_wasm_bindgen::to_value(&result)?),
+            None => Err(JsValue::from_str("无法分析频谱数据")),
+        }
+    }
+    
     // 获取当前处理状态
     #[wasm_bindgen]
     pub fn get_processor_state(&self) -> Result<JsValue, JsValue> {
@@ -567,21 +598,12 @@ impl AudioProcessor {
         
         Ok(serde_wasm_bindgen::to_value(&state)?)
     }
-    
-    // 分析频谱数据 - 返回结果到JS
-    #[wasm_bindgen]
-    pub fn analyze_spectrum_data(&mut self, audio_data: &[f32]) -> Result<JsValue, JsValue> {
-        match self.analyze_spectrum(audio_data) {
-            Some(result) => Ok(serde_wasm_bindgen::to_value(&result)?),
-            None => Err(JsValue::from_str("无法分析频谱数据")),
-        }
-    }
 }
 
 // 工具函数：从 AudioBuffer 提取单声道数据
 #[wasm_bindgen]
 pub fn extract_mono_from_buffer(buffer: &AudioBuffer) -> Box<[f32]> {
-    let length = buffer.get_channel_data(0).unwrap().length() as usize;
+    let length = buffer.get_channel_data(0).unwrap().len() as usize;
     let mut mono_data = vec![0.0; length];
     
     // 获取第一个通道数据
@@ -589,7 +611,7 @@ pub fn extract_mono_from_buffer(buffer: &AudioBuffer) -> Box<[f32]> {
     
     // 复制数据
     for i in 0..length {
-        mono_data[i] = channel_data.get_index(i as u32);
+        mono_data[i] = channel_data[i];
     }
     
     // 如果有多个通道，计算平均值
@@ -598,7 +620,7 @@ pub fn extract_mono_from_buffer(buffer: &AudioBuffer) -> Box<[f32]> {
         for channel in 1..num_channels {
             let channel_data = buffer.get_channel_data(channel as u32).unwrap();
             for i in 0..length {
-                mono_data[i] += channel_data.get_index(i as u32);
+                mono_data[i] += channel_data[i];
             }
         }
         
@@ -616,4 +638,112 @@ pub fn extract_mono_from_buffer(buffer: &AudioBuffer) -> Box<[f32]> {
 pub fn init() {
     init_panic_hook();
     console::log_1(&"Audio Processor WASM module initialized".into());
+}
+
+// 添加一个简单的IIR滤波器结构
+struct IIRFilter {
+    a: [f32; 3], // 分母系数
+    b: [f32; 3], // 分子系数
+    x: [f32; 3], // 输入历史
+    y: [f32; 3], // 输出历史
+}
+
+impl IIRFilter {
+    // 创建一个低通滤波器
+    fn low_pass(cutoff: f32, q: f32) -> Self {
+        // 计算滤波器系数
+        let omega = 2.0 * std::f32::consts::PI * cutoff;
+        let alpha = omega.sin() / (2.0 * q);
+        
+        let b0 = (1.0 - omega.cos()) / 2.0;
+        let b1 = 1.0 - omega.cos();
+        let b2 = (1.0 - omega.cos()) / 2.0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * omega.cos();
+        let a2 = 1.0 - alpha;
+        
+        // 归一化系数
+        let b = [b0 / a0, b1 / a0, b2 / a0];
+        let a = [1.0, a1 / a0, a2 / a0];
+        
+        Self {
+            a,
+            b,
+            x: [0.0; 3],
+            y: [0.0; 3],
+        }
+    }
+    
+    // 创建一个高通滤波器
+    fn high_pass(cutoff: f32, q: f32) -> Self {
+        // 计算滤波器系数
+        let omega = 2.0 * std::f32::consts::PI * cutoff;
+        let alpha = omega.sin() / (2.0 * q);
+        
+        let b0 = (1.0 + omega.cos()) / 2.0;
+        let b1 = -(1.0 + omega.cos());
+        let b2 = (1.0 + omega.cos()) / 2.0;
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * omega.cos();
+        let a2 = 1.0 - alpha;
+        
+        // 归一化系数
+        let b = [b0 / a0, b1 / a0, b2 / a0];
+        let a = [1.0, a1 / a0, a2 / a0];
+        
+        Self {
+            a,
+            b,
+            x: [0.0; 3],
+            y: [0.0; 3],
+        }
+    }
+    
+    // 创建一个峰值滤波器 (band peak)
+    fn peak(cutoff: f32, q: f32, gain: f32) -> Self {
+        // 计算滤波器系数
+        let omega = 2.0 * std::f32::consts::PI * cutoff;
+        let alpha = omega.sin() / (2.0 * q);
+        let a = 10.0f32.powf(gain / 40.0); // 将dB增益转换为线性增益
+        
+        let b0 = 1.0 + alpha * a;
+        let b1 = -2.0 * omega.cos();
+        let b2 = 1.0 - alpha * a;
+        let a0 = 1.0 + alpha / a;
+        let a1 = -2.0 * omega.cos();
+        let a2 = 1.0 - alpha / a;
+        
+        // 归一化系数
+        let b = [b0 / a0, b1 / a0, b2 / a0];
+        let a = [1.0, a1 / a0, a2 / a0];
+        
+        Self {
+            a,
+            b,
+            x: [0.0; 3],
+            y: [0.0; 3],
+        }
+    }
+    
+    // 处理单个样本
+    fn process(&mut self, input: f32) -> f32 {
+        // 更新输入历史
+        self.x[2] = self.x[1];
+        self.x[1] = self.x[0];
+        self.x[0] = input;
+        
+        // 计算输出
+        let output = self.b[0] * self.x[0] + 
+                     self.b[1] * self.x[1] + 
+                     self.b[2] * self.x[2] - 
+                     self.a[1] * self.y[0] - 
+                     self.a[2] * self.y[1];
+        
+        // 更新输出历史
+        self.y[2] = self.y[1];
+        self.y[1] = self.y[0];
+        self.y[0] = output;
+        
+        output
+    }
 } 
