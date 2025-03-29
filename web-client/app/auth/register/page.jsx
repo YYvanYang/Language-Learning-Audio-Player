@@ -125,7 +125,7 @@ export default function RegisterPage() {
                     value={formData.username}
                     onChange={handleChange}
                     placeholder="请输入用户名"
-                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
+                    className="text-base px-4 py-3 border border-gray-300 focus:border-blue-500 focus:ring-0 bg-white rounded-md transition-all duration-200 text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
@@ -140,7 +140,7 @@ export default function RegisterPage() {
                     value={formData.email}
                     onChange={handleChange}
                     placeholder="请输入电子邮箱"
-                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
+                    className="text-base px-4 py-3 border border-gray-300 focus:border-blue-500 focus:ring-0 bg-white rounded-md transition-all duration-200 text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
@@ -155,7 +155,7 @@ export default function RegisterPage() {
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="请输入密码（至少8个字符）"
-                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
+                    className="text-base px-4 py-3 border border-gray-300 focus:border-blue-500 focus:ring-0 bg-white rounded-md transition-all duration-200 text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
@@ -170,7 +170,7 @@ export default function RegisterPage() {
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     placeholder="请再次输入密码"
-                    className="text-base px-4 py-3 border-2 focus:border-blue-500 shadow-sm text-gray-900 placeholder:text-gray-400"
+                    className="text-base px-4 py-3 border border-gray-300 focus:border-blue-500 focus:ring-0 bg-white rounded-md transition-all duration-200 text-gray-900 placeholder:text-gray-400"
                   />
                 </div>
                 
