@@ -1,0 +1,475 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: Next.js数据获取和API构建规范
+globs: "**/*.{js,jsx,ts,tsx}"
+alwaysApply: true
+---
+
+# Next.js数据获取和API规范
+
+本文档详细说明Next.js项目中数据获取和API的最佳实践和实现方法。所有数据获取和API实现必须遵循此规范。
+
+## 总体架构
+
+项目采用Next.js App Router架构，遵循以下原则进行数据获取：
+
+```
+┌─────────────────────────────────────────┐
+│              Next.js App                │
+├─────────────────────────────────────────┤
+│ ┌───────────────┐    ┌───────────────┐  │
+│ │ 服务器组件    │    │ 客户端组件    │  │
+│ │ (获取数据)    │    │ (UI交互)      │  │
+│ └───────┬───────┘    └───────┬───────┘  │
+│         │                    │          │
+│         │                    │          │
+│         ▼                    ▼          │
+│ ┌───────────────┐    ┌───────────────┐  │
+│ │直接获取数据   │    │ 推荐: use Hook │  │
+│ │(fetch, ORM)   │    │ 备选: api.js  │  │
+│ └───────┬───────┘    └───────┬───────┘  │
+│         │                    │          │
+└─────────┼────────────────────┼──────────┘
+          │                    │
+          ▼                    ▼
+   ┌─────────────┐      ┌─────────────┐
+   │API路由      │      │API路由      │
+   │(app/api/)   │      │(app/api/)   │
+   └──────┬──────┘      └──────┬──────┘
+          │                    │
+          └──────────┬─────────┘
+                     ▼
+           ┌───────────────────┐
+           │     后端API       │
+           │  (Golang后端)     │
+           └───────────────────┘
+```
+
+## 数据获取核心原则
+
+1. **服务器组件中**：直接使用`fetch`或ORM获取数据
+2. **客户端组件中**：
+   - **首选**：使用React的`use` Hook接收从服务器组件传递的Promise
+   - **备选**：使用标记为`'use client'`的API工具库或第三方库(如SWR)
+
+## 1. 服务器组件数据获取
+
+服务器组件是在服务器上运行的组件，可以使用异步/等待直接获取数据：
+
+```tsx
+// app/courses/page.tsx (服务器组件)
+export default async function CoursesPage() {
+  // 直接使用fetch API获取数据
+  const response = await fetch('http://localhost:3000/api/courses', {
+    cache: 'no-store' // 确保每次请求都获取最新数据
+  });
+  
+  // 或使用Next.js API路由
+  // const response = await fetch(`${process.env.NEXT_PUBLIC_HOST}/api/courses`, {
+  //   cache: 'no-store'
+  // });
+  
+  const data = await response.json();
+  
+  return (
+    <main>
+      <h1>课程列表</h1>
+      <div className="grid">
+        {data.courses.map(course => (
+          <CourseCard key={course.id} course={course} />
+        ))}
+      </div>
+    </main>
+  );
+}
+```
+
+### 重要提示
+
+- 服务器组件中的`fetch`请求默认被缓存
+- 使用`{ cache: 'no-store' }`选项禁用缓存，确保每次请求都获取最新数据
+- 服务器组件中**不应该**导入和使用`lib/api.js`中的函数，因为它们标记为`'use client'`
+
+## 2. 客户端组件数据获取
+
+客户端组件（标记为`'use client'`的组件）应该使用以下方法获取数据，按优先级排序：
+
+### 推荐：使用React的`use` Hook（最佳方式）
+
+最佳的实践是在服务器组件中创建Promise，然后将Promise传递给客户端组件，使用`use` Hook消费数据：
+
+```tsx
+// app/courses/page.tsx (服务器组件)
+import { Suspense } from 'react';
+import { CourseList } from '@/components/CourseList';
+
+export default function CoursesPage() {
+  // 在服务器组件中创建Promise（不要await）
+  const coursesPromise = fetch('http://localhost:3000/api/courses')
+    .then(res => res.json());
+  
+  return (
+    <main>
+      <h1>课程列表</h1>
+      {/* 使用Suspense包裹消费Promise的组件 */}
+      <Suspense fallback={<div>加载课程中...</div>}>
+        <CourseList coursesPromise={coursesPromise} />
+      </Suspense>
+    </main>
+  );
+}
+```
+
+然后在客户端组件中使用`use` Hook解析Promise：
+
+```tsx
+'use client';
+// components/CourseList.js (客户端组件)
+import { use } from 'react';
+
+export function CourseList({ coursesPromise }) {
+  // 使用use Hook直接从Promise中读取数据
+  const data = use(coursesPromise);
+  
+  return (
+    <div className="grid">
+      {data.courses.map(course => (
+        <div key={course.id}>{course.title}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+#### `use` Hook的优势
+
+- **流式渲染**：与Suspense集成，支持流式渲染和优雅的加载状态
+- **更简洁的代码**：无需使用`useState`和`useEffect`管理数据加载
+- **避免瀑布请求**：可以在服务器上发起请求
+- **更少的客户端代码**：减少客户端bundle大小
+- **更好的错误处理**：可以与Error Boundary集成
+
+#### 注意事项
+
+- 必须用`<Suspense>`包裹使用`use`的组件
+- 从服务器组件中传递的Promise在客户端是稳定的（不会在渲染时重新创建）
+- 与普通Hooks不同，`use`可以在条件语句和循环中使用
+
+### 备选：API工具库
+
+如果无法使用`use` Hook（例如需要在客户端发起请求），可以使用API工具库：
+
+```tsx
+'use client';
+// 客户端组件
+import { useState, useEffect } from 'react';
+import { getUserCourses } from '@/lib/api';
+
+export default function ClientCoursesList() {
+  const [courses, setCourses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    async function loadCourses() {
+      try {
+        const data = await getUserCourses();
+        setCourses(data.courses || []);
+      } catch (error) {
+        console.error('加载课程失败:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadCourses();
+  }, []);
+  
+  if (loading) return <div>加载中...</div>;
+  
+  return (
+    <div className="grid">
+      {courses.map(course => (
+        <div key={course.id}>{course.title}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+### 备选：使用社区库
+
+```tsx
+'use client';
+// 使用SWR获取数据
+import useSWR from 'swr';
+
+const fetcher = url => fetch(url).then(r => r.json());
+
+export default function CoursesList() {
+  const { data, error, isLoading } = useSWR('/api/courses', fetcher);
+  
+  if (isLoading) return <div>加载中...</div>;
+  if (error) return <div>加载失败</div>;
+  
+  return (
+    <div className="grid">
+      {data.courses.map(course => (
+        <div key={course.id}>{course.title}</div>
+      ))}
+    </div>
+  );
+}
+```
+
+## 3. API路由实现
+
+所有API路由都应放在`app/api/`目录下，使用`route.js`文件定义各HTTP方法：
+
+### 基本API路由
+
+```javascript
+// app/api/courses/route.js
+export async function GET(request) {
+  try {
+    // 获取auth_token cookie
+    const cookieHeader = request.headers.get('cookie') || '';
+    
+    // 使用环境变量构建后端URL
+    const backendBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+    const backendUrl = `${backendBaseUrl}/api/courses`;
+    
+    // 转发请求到后端
+    const response = await fetch(backendUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Cookie': cookieHeader // 传递cookie
+      },
+      cache: 'no-store'
+    });
+    
+    // 处理响应
+    if (!response.ok) {
+      // 构建错误响应
+      return Response.json({
+        error: `后端请求失败: ${response.status}`,
+        courses: []
+      }, { status: response.status });
+    }
+    
+    // 返回成功响应
+    const data = await response.json();
+    return Response.json(data);
+  } catch (error) {
+    console.error('API路由错误:', error);
+    return Response.json({
+      error: '服务器内部错误',
+      courses: []
+    }, { status: 500 });
+  }
+}
+```
+
+### 动态路由参数
+
+```javascript
+// app/api/courses/[courseId]/route.js
+export async function GET(request, { params }) {
+  try {
+    const { courseId } = params;
+    
+    // 构建后端URL
+    const backendBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+    const backendUrl = `${backendBaseUrl}/api/courses/${courseId}`;
+    
+    // 转发请求
+    const response = await fetch(backendUrl, { cache: 'no-store' });
+    
+    // 返回响应
+    if (!response.ok) {
+      return Response.json({ error: '课程不存在' }, { status: 404 });
+    }
+    
+    const data = await response.json();
+    return Response.json(data);
+  } catch (error) {
+    return Response.json({ error: '服务器错误' }, { status: 500 });
+  }
+}
+```
+
+## 4. 客户端API工具库
+
+客户端API工具库（`lib/api.js`）必须遵循以下规范：
+
+```javascript
+'use client'; // 标记为客户端代码
+// lib/api.js
+
+/**
+ * 获取用户的所有课程
+ * @returns {Promise<Object>} 课程列表和数量
+ */
+export async function getUserCourses() {
+  try {
+    const response = await fetch('/api/courses', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error(`获取课程列表失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('获取课程列表错误:', error);
+    
+    // 开发环境下返回模拟数据
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+      return getMockUserCourses(); // 模拟数据函数
+    }
+    
+    throw error;
+  }
+}
+
+// 其他API函数...
+```
+
+## 5. 加载状态和流式渲染
+
+使用React的Suspense和Next.js的loading.js实现优雅的加载状态：
+
+### 页面级加载状态
+
+```
+app/
+└── courses/
+    ├── page.tsx
+    └── loading.tsx
+```
+
+```tsx
+// app/courses/loading.tsx
+export default function Loading() {
+  return (
+    <div className="courses-loading">
+      <div className="skeleton-grid">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="skeleton-card">
+            <div className="skeleton-image"></div>
+            <div className="skeleton-title"></div>
+            <div className="skeleton-text"></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### 组件级加载状态
+
+```tsx
+// app/page.tsx
+import { Suspense } from 'react';
+import CoursesSection from '@/components/CoursesSection';
+import CoursesSkeleton from '@/components/CoursesSkeleton';
+
+export default function HomePage() {
+  return (
+    <main>
+      <h1>语言学习平台</h1>
+      
+      {/* 马上显示的内容 */}
+      <section className="hero">
+        <h2>开始您的语言学习之旅</h2>
+        <p>通过高级音频处理技术提升语言能力</p>
+      </section>
+      
+      {/* 流式渲染的内容 */}
+      <Suspense fallback={<CoursesSkeleton />}>
+        <CoursesSection />
+      </Suspense>
+    </main>
+  );
+}
+```
+
+## 6. 处理错误
+
+当使用`use` Hook时，应该正确处理Promise拒绝的情况：
+
+```tsx
+// app/courses/page.tsx
+import { Suspense } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
+import { CourseList } from '@/components/CourseList';
+
+export default function CoursesPage() {
+  // 创建Promise并处理可能的错误
+  const coursesPromise = fetch('http://localhost:3000/api/courses')
+    .then(res => {
+      if (!res.ok) throw new Error(`获取课程失败: ${res.status}`);
+      return res.json();
+    })
+    .catch(error => {
+      // 提供错误情况下的后备数据
+      console.error('加载课程出错:', error);
+      return { courses: [] };
+    });
+  
+  return (
+    <main>
+      <h1>课程列表</h1>
+      <ErrorBoundary fallback={<div>加载课程时出错</div>}>
+        <Suspense fallback={<div>加载课程中...</div>}>
+          <CourseList coursesPromise={coursesPromise} />
+        </Suspense>
+      </ErrorBoundary>
+    </main>
+  );
+}
+```
+
+## 最佳实践和注意事项
+
+1. **明确组件类型**:
+   - 默认使用服务器组件
+   - 只在需要客户端交互或状态时使用客户端组件
+   - 清晰标记客户端组件（`'use client'`）
+
+2. **数据获取策略**:
+   - 服务器组件直接使用`fetch`或ORM
+   - 客户端组件优先使用`use` Hook，其次再考虑`lib/api.js`或社区库
+   - 尽可能在服务器组件中创建Promise并传给客户端组件，而不是在客户端组件中创建
+
+3. **缓存控制**:
+   - 使用`{ cache: 'no-store' }`禁用缓存
+   - 或使用`{ next: { revalidate: seconds } }`控制重新验证间隔
+
+4. **错误处理**:
+   - 对于`use` Hook，使用ErrorBoundary或Promise的catch方法处理错误
+   - 所有数据获取都要有完善的错误处理
+   - 提供优雅的降级UI
+   - 如果可能，提供回退数据
+
+5. **API路由设计**:
+   - 保持简洁，主要用于代理或转换
+   - 处理认证和授权
+   - 统一错误响应格式
+   - 为每个路由实现适当的HTTP方法
+
+6. **环境变量**:
+   - 使用`NEXT_PUBLIC_API_BASE_URL`配置后端URL
+   - 注意只有以`NEXT_PUBLIC_`开头的环境变量在客户端可访问

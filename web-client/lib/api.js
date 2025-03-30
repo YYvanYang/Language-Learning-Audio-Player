@@ -1,5 +1,61 @@
+'use client';
 // lib/api.js
-// API工具函数
+// API工具函数 - 仅用于客户端组件
+
+/**
+ * API工具函数库 - 仅用于客户端组件
+ * 
+ * 注意: 这是备选的数据获取方案。推荐的方式是：
+ * 1. 在服务器组件中创建Promise
+ * 2. 将Promise传递给客户端组件
+ * 3. 在客户端组件中使用React的use Hook消费Promise
+ * 
+ * 示例:
+ * // 服务器组件
+ * const dataPromise = fetch('/api/data').then(r => r.json());
+ * return <ClientComponent dataPromise={dataPromise} />;
+ * 
+ * // 客户端组件
+ * 'use client';
+ * import { use } from 'react';
+ * export function ClientComponent({ dataPromise }) {
+ *   const data = use(dataPromise);
+ *   return <div>{data.title}</div>;
+ * }
+ */
+
+/**
+ * 获取用户的所有课程
+ * @returns {Promise<Object>} 课程列表和数量
+ */
+export async function getUserCourses() {
+  try {
+    // 使用相对URL路径，由Next.js API路由代理到后端
+    const response = await fetch('/api/courses', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error(`获取课程列表失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('获取课程列表错误:', error);
+    
+    // 开发环境下返回模拟数据
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+      return getMockUserCourses();
+    }
+    
+    throw error;
+  }
+}
 
 /**
  * 获取课程数据
@@ -113,7 +169,7 @@ export async function getAudioToken(trackId, courseId, unitId) {
  * 获取自定义音轨
  * @param {string} courseId - 课程ID
  * @param {string} unitId - 单元ID
- * @returns {Promise<Array>} 自定义音轨列表
+ * @returns {Promise<Object>} 自定义音轨列表
  */
 export async function getCustomTracks(courseId, unitId) {
   try {
@@ -167,37 +223,6 @@ export async function uploadAudio(formData) {
 }
 
 /**
- * 获取用户的所有课程
- * @returns {Promise<Array>} 课程列表
- */
-export async function getUserCourses() {
-  try {
-    const response = await fetch('/api/courses', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error('获取课程列表失败');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('获取课程列表错误:', error);
-    
-    // 开发环境下返回模拟数据
-    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
-      return getMockUserCourses();
-    }
-    
-    throw error;
-  }
-}
-
-/**
  * 更新学习进度
  * @param {string} trackId - 音轨ID
  * @param {number} position - 播放位置（秒）
@@ -231,7 +256,7 @@ export async function updateProgress(trackId, position, completionRate) {
 
 /**
  * 获取最近播放的音轨
- * @returns {Promise<Array>} 最近播放的音轨列表
+ * @returns {Promise<Object>} 最近播放的音轨列表
  */
 export async function getRecentTracks() {
   try {
