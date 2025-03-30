@@ -4,6 +4,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Music, X, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { generateToken } from '@/lib/auth';
+import { uploadAudio } from '@/lib/api';
 
 const AudioImportForm = ({ courseId, unitId, userId, onAudioImported }) => {
   const [selectedFile, setSelectedFile] = useState(null);

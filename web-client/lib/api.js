@@ -9,42 +9,65 @@
  */
 export async function getCourseData(courseId, unitId) {
   try {
-    // 检查是否在开发环境且设置了使用模拟数据
-    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
-      console.log('使用模拟数据模式...');
-      return getMockCourseData(courseId, unitId);
-    }
-    
-    // 发送请求到后端API - 修复正确的API路径
-    const response = await fetch(`/api/courses/${courseId}/units/${unitId}/tracks`, {
+    // 获取课程详情
+    const courseResponse = await fetch(`/api/courses/${courseId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      credentials: 'include', // 包含cookie以便身份验证
+      credentials: 'include',
     });
 
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status}`);
+    if (!courseResponse.ok) {
+      throw new Error(`课程请求失败: ${courseResponse.status}`);
     }
 
-    const data = await response.json();
-    
-    // 转换后端数据到前端所需格式
+    const courseData = await courseResponse.json();
+
+    // 获取单元详情
+    const unitResponse = await fetch(`/api/courses/${courseId}/units/${unitId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!unitResponse.ok) {
+      throw new Error(`单元请求失败: ${unitResponse.status}`);
+    }
+
+    const unitData = await unitResponse.json();
+
+    // 获取单元音轨
+    const tracksResponse = await fetch(`/api/courses/${courseId}/units/${unitId}/tracks`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!tracksResponse.ok) {
+      throw new Error(`音轨请求失败: ${tracksResponse.status}`);
+    }
+
+    const tracksData = await tracksResponse.json();
+
+    // 合并数据，返回前端需要的格式
     return {
       id: courseId,
-      courseName: data.course?.title || '语言学习课程',
-      unitTitle: data.unit?.title || '单元内容',
-      content: data.unit?.content || '<p>课程内容将在这里显示</p>',
-      tracks: data.tracks || [],
+      courseName: courseData.title || '语言学习课程',
+      unitTitle: unitData.title || '单元内容',
+      content: unitData.content || '<p>课程内容将在这里显示</p>',
+      tracks: tracksData.tracks || [],
       unitId: unitId
     };
-    
   } catch (error) {
     console.error('获取课程数据时发生错误:', error);
     
     // 开发环境下自动返回模拟数据作为后备
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
       console.log('API请求失败，使用模拟数据...');
       return getMockCourseData(courseId, unitId);
     }
@@ -52,6 +75,192 @@ export async function getCourseData(courseId, unitId) {
     throw error;
   }
 }
+
+/**
+ * 获取音频访问令牌
+ * @param {string} trackId - 音轨ID
+ * @returns {Promise<string>} 访问令牌
+ */
+export async function getAudioToken(trackId, courseId, unitId) {
+  try {
+    const response = await fetch(`/api/audio/token/${trackId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        courseId,
+        unitId,
+        trackId,
+        action: 'stream_audio'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`获取音频令牌失败: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.token;
+  } catch (error) {
+    console.error('获取音频令牌失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 获取自定义音轨
+ * @param {string} courseId - 课程ID
+ * @param {string} unitId - 单元ID
+ * @returns {Promise<Array>} 自定义音轨列表
+ */
+export async function getCustomTracks(courseId, unitId) {
+  try {
+    const response = await fetch(`/api/courses/${courseId}/units/${unitId}/custom-tracks`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error(`获取自定义音轨失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('获取自定义音轨失败:', error);
+    
+    // 开发环境下返回模拟数据
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+      return { tracks: [] };
+    }
+    
+    return { tracks: [] }; // 失败时返回空数组
+  }
+}
+
+/**
+ * 上传自定义音频
+ * @param {FormData} formData - 包含音频文件和元数据的表单数据
+ * @returns {Promise<Object>} 上传结果
+ */
+export async function uploadAudio(formData) {
+  try {
+    const response = await fetch('/api/audio/upload', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`上传音频失败: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('上传音频失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 获取用户的所有课程
+ * @returns {Promise<Array>} 课程列表
+ */
+export async function getUserCourses() {
+  try {
+    const response = await fetch('/api/courses', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('获取课程列表失败');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('获取课程列表错误:', error);
+    
+    // 开发环境下返回模拟数据
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+      return getMockUserCourses();
+    }
+    
+    throw error;
+  }
+}
+
+/**
+ * 更新学习进度
+ * @param {string} trackId - 音轨ID
+ * @param {number} position - 播放位置（秒）
+ * @param {number} completionRate - 完成率（0-100）
+ */
+export async function updateProgress(trackId, position, completionRate) {
+  try {
+    const response = await fetch('/api/track-progress', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        trackId,
+        position,
+        completionRate
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('更新进度请求失败');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('更新进度失败:', error);
+    return false;
+  }
+}
+
+/**
+ * 获取最近播放的音轨
+ * @returns {Promise<Array>} 最近播放的音轨列表
+ */
+export async function getRecentTracks() {
+  try {
+    const response = await fetch('/api/recent-tracks', {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error('获取最近播放记录失败');
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('获取最近播放记录错误:', error);
+    
+    // 开发环境下返回模拟数据
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+      return getMockRecentTracks();
+    }
+    
+    return { tracks: [] };
+  }
+}
+
+// 以下保留mock数据函数用于开发环境
 
 /**
  * 开发环境下的模拟数据
@@ -151,42 +360,6 @@ function getMockCourseData(courseId, unitId) {
 }
 
 /**
- * 获取用户的所有课程
- * @returns {Promise<Array>} 课程列表
- */
-export async function getUserCourses() {
-  try {
-    // 检查是否使用模拟数据
-    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
-      return getMockUserCourses();
-    }
-    
-    const response = await fetch('/api/courses', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch courses');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching user courses:', error);
-    
-    // 开发环境下返回模拟数据
-    if (process.env.NODE_ENV === 'development') {
-      return getMockUserCourses();
-    }
-    
-    throw error;
-  }
-}
-
-/**
  * 模拟用户课程数据
  */
 function getMockUserCourses() {
@@ -210,80 +383,6 @@ function getMockUserCourses() {
       }
     ]
   };
-}
-
-/**
- * 更新学习进度
- * @param {string} trackId - 音轨ID
- * @param {number} position - 播放位置（秒）
- * @param {number} completionRate - 完成率（0-100）
- */
-export async function updateProgress(trackId, position, completionRate) {
-  try {
-    // 开发环境模拟成功
-    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
-      console.log('模拟更新进度:', { trackId, position, completionRate });
-      return true;
-    }
-    
-    const response = await fetch('/api/track-progress', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        trackId,
-        position,
-        completionRate
-      }),
-    });
-    
-    if (!response.ok) {
-      throw new Error('更新进度请求失败');
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('更新进度失败:', error);
-    return false;
-  }
-}
-
-/**
- * 获取最近播放的音轨
- * @returns {Promise<Array>} 最近播放的音轨列表
- */
-export async function getRecentTracks() {
-  try {
-    // 开发环境模拟数据
-    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
-      return getMockRecentTracks();
-    }
-    
-    const response = await fetch('/api/recent-tracks', {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error('获取最近播放记录失败');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('获取最近播放记录错误:', error);
-    
-    // 开发环境下返回模拟数据
-    if (process.env.NODE_ENV === 'development') {
-      return getMockRecentTracks();
-    }
-    
-    return { tracks: [] };
-  }
 }
 
 /**

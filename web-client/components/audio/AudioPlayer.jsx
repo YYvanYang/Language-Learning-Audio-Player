@@ -9,6 +9,7 @@ import ABLoopControl from './ABLoopControl';
 import { generateToken } from '@/lib/auth';
 import { initAudioProcessor } from '@/lib/audio/processing';
 import { createBufferMonitor, BufferControllerType, createStreamLoader } from '@/lib/audio/buffer-monitor';
+import { getAudioToken } from '@/lib/api';
 
 const AudioPlayer = ({ 
   courseId, 
@@ -232,24 +233,23 @@ const AudioPlayer = ({
       setIsBuffering(true);
       setError(null);
       
-      // 生成令牌
-      const token = await generateToken({
+      // 通过API获取音频访问令牌
+      const token = await getAudioToken(
+        tracks[trackIndex].id,
         courseId,
-        unitId,
-        trackId: tracks[trackIndex].id,
-        userId,
-        action: 'stream_audio',
-        timestamp: Date.now()
-      }, authKey);
+        unitId
+      );
       
       console.log(`加载音轨 ${trackIndex}: ${tracks[trackIndex].title}`);
+      
+      // 构建音频URL，使用令牌访问
+      const audioUrl = `/api/audio/stream/${tracks[trackIndex].id}?token=${encodeURIComponent(token)}`;
       
       // 根据音频长度选择加载策略
       if (tracks[trackIndex].duration && tracks[trackIndex].duration > 60) {
         // 长音频使用StreamLoader处理
         console.log('检测到长音频，使用流式加载...');
         
-        const audioUrl = `/api/audio/stream?token=${encodeURIComponent(token)}`;
         const streamLoader = createStreamLoader(audioUrl, audioContextRef.current);
         
         // 监听加载进度
@@ -289,13 +289,7 @@ const AudioPlayer = ({
         console.log('使用标准方法加载音频...');
         
         // 请求音频数据
-        const response = await fetch('/api/audio/stream', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ token })
-        });
+        const response = await fetch(audioUrl);
         
         if (!response.ok) {
           throw new Error(`Failed to load audio: ${response.status}`);
@@ -397,28 +391,26 @@ const AudioPlayer = ({
     if (!tracks[trackIndex]) return;
     
     try {
-      // 创建访问令牌
-      const token = await generateToken({
+      // 获取音频访问令牌
+      const token = await getAudioToken(
+        tracks[trackIndex].id,
         courseId,
-        unitId,
-        trackId: tracks[trackIndex].id,
-        userId,
-        action: 'stream_audio',
-        timestamp: Date.now()
-      }, authKey);
+        unitId
+      );
       
-      // 仅请求但不处理
-      fetch('/api/audio/stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ token })
-      });
+      // 构建音频URL
+      const audioUrl = `/api/audio/stream/${tracks[trackIndex].id}?token=${encodeURIComponent(token)}`;
       
-      console.log('预加载轨道:', trackIndex);
+      // 仅预请求但不处理数据
+      fetch(audioUrl, { method: 'HEAD' })
+        .then(response => {
+          if (response.ok) {
+            console.log('预加载轨道:', trackIndex, tracks[trackIndex].title);
+          }
+        })
+        .catch(err => console.warn('预加载请求失败:', err));
     } catch (err) {
-      console.warn('预加载失败:', err);
+      console.warn('获取预加载令牌失败:', err);
     }
   };
   

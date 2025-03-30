@@ -215,6 +215,13 @@ func setupRouter() *gin.Engine {
 
 		// 获取单元音轨
 		courseRoutes.GET("/:courseId/units/:unitId/tracks", AuthMiddleware(), CourseAccessMiddleware(), getUnitTracksHandler)
+
+		// 自定义音轨路由
+		courseRoutes.GET("/:courseId/units/:unitId/custom-tracks", getUserCustomTracksHandler)
+		courseRoutes.DELETE("/:courseId/units/:unitId/custom-tracks/:trackId", deleteCustomTrackHandler)
+		courseRoutes.PATCH("/:courseId/units/:unitId/custom-tracks/:trackId", updateCustomTrackHandler)
+		courseRoutes.POST("/:courseId/units/:unitId/custom-tracks/:trackId/reorder", reorderCustomTrackHandler)
+		courseRoutes.POST("/:courseId/units/:unitId/custom-tracks", addCustomTrackHandler)
 	}
 
 	// 用户数据路由
@@ -236,6 +243,13 @@ func setupRouter() *gin.Engine {
 
 		// 系统状态
 		adminRoutes.GET("/stats", getSystemStatsHandler)
+	}
+
+	// 用户进度和最近播放记录路由
+	authorized := v1.Group("/api")
+	{
+		authorized.POST("/track-progress", updateUserTrackProgressHandler)
+		authorized.GET("/recent-tracks", getRecentTracksHandler)
 	}
 
 	return router

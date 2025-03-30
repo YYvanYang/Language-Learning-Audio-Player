@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Plus, X, MusicIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { getCourseData } from '@/lib/api';
+import { getCourseData, getCustomTracks } from '@/lib/api';
 import AudioPlayer from '@/components/audio/AudioPlayer';
 import AudioImportForm from '@/components/audio/AudioImportForm';
 import TrackManager from '@/components/audio/TrackManager';
@@ -57,16 +57,7 @@ export default function CoursePage() {
   // 加载自定义音轨
   const loadCustomTracks = async () => {
     try {
-      const response = await fetch(`/api/course/${courseId}/unit/${unitId}/custom-tracks`, {
-        method: 'GET',
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to load custom tracks');
-      }
-      
-      const data = await response.json();
+      const data = await getCustomTracks(courseId, unitId);
       setCustomTracks(data.tracks || []);
     } catch (err) {
       console.error('Error loading custom tracks:', err);
@@ -102,33 +93,80 @@ export default function CoursePage() {
   };
   
   // 处理音轨删除
-  const handleTrackDelete = (trackId) => {
-    setCustomTracks(prev => prev.filter(track => track.id !== trackId));
-    
-    toast({
-      title: "删除成功",
-      description: "音轨已成功删除！",
-      variant: "success",
-    });
+  const handleTrackDelete = async (trackId) => {
+    try {
+      // 调用删除API
+      const response = await fetch(`/api/courses/${courseId}/units/${unitId}/custom-tracks/${trackId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        throw new Error('删除音轨失败');
+      }
+      
+      // 从列表中移除
+      setCustomTracks(prev => prev.filter(track => track.id !== trackId));
+      
+      toast({
+        title: "删除成功",
+        description: "音轨已成功删除！",
+        variant: "success",
+      });
+    } catch (error) {
+      console.error('删除音轨失败:', error);
+      toast({
+        title: "删除失败",
+        description: "无法删除音轨，请稍后重试",
+        variant: "error",
+      });
+    }
   };
   
   // 处理音轨重命名
-  const handleTrackRename = (trackId, newTitle) => {
-    setCustomTracks(prev => 
-      prev.map(track => 
-        track.id === trackId ? { ...track, title: newTitle } : track
-      )
-    );
-    
-    toast({
-      title: "重命名成功",
-      description: "音轨名称已更新！",
-      variant: "success",
-    });
+  const handleTrackRename = async (trackId, newTitle) => {
+    try {
+      // 调用重命名API
+      const response = await fetch(`/api/courses/${courseId}/units/${unitId}/custom-tracks/${trackId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ title: newTitle })
+      });
+      
+      if (!response.ok) {
+        throw new Error('重命名音轨失败');
+      }
+      
+      // 更新本地数据
+      setCustomTracks(prev => 
+        prev.map(track => 
+          track.id === trackId ? { ...track, title: newTitle } : track
+        )
+      );
+      
+      toast({
+        title: "重命名成功",
+        description: "音轨名称已更新！",
+        variant: "success",
+      });
+    } catch (error) {
+      console.error('重命名音轨失败:', error);
+      toast({
+        title: "重命名失败",
+        description: "无法更新音轨名称，请稍后重试",
+        variant: "error",
+      });
+    }
   };
   
   // 处理音轨重排序
-  const handleTrackReorder = (trackId, direction) => {
+  const handleTrackReorder = async (trackId, direction) => {
     const allTracks = [...(courseData?.tracks || []), ...customTracks];
     const currentIndex = allTracks.findIndex(track => track.id === trackId);
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
@@ -138,25 +176,57 @@ export default function CoursePage() {
       return;
     }
     
-    // 更新自定义轨道顺序
-    const updatedTracks = [...customTracks];
-    const trackIndex = updatedTracks.findIndex(track => track.id === trackId);
-    
-    if (trackIndex !== -1) {
-      const track = updatedTracks[trackIndex];
-      updatedTracks.splice(trackIndex, 1);
+    try {
+      // 找到当前音轨
+      const trackToMove = customTracks.find(track => track.id === trackId);
+      if (!trackToMove) return; // 不是自定义音轨，无法移动
       
-      if (direction === 'up') {
-        // 如果向上移动，需要计算新位置
-        const newPosition = Math.max(0, trackIndex - 1);
-        updatedTracks.splice(newPosition, 0, track);
-      } else {
-        // 如果向下移动
-        const newPosition = Math.min(updatedTracks.length, trackIndex + 1);
-        updatedTracks.splice(newPosition, 0, track);
+      // 计算新的排序值
+      const newSortOrder = direction === 'up' 
+        ? Math.max(0, trackToMove.sortOrder - 1)
+        : trackToMove.sortOrder + 1;
+      
+      // 调用重排序API
+      const response = await fetch(`/api/courses/${courseId}/units/${unitId}/custom-tracks/${trackId}/reorder`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ sortOrder: newSortOrder })
+      });
+      
+      if (!response.ok) {
+        throw new Error('重排序音轨失败');
       }
       
-      setCustomTracks(updatedTracks);
+      // 更新本地数据
+      const updatedTracks = [...customTracks];
+      const trackIndex = updatedTracks.findIndex(track => track.id === trackId);
+      
+      if (trackIndex !== -1) {
+        const track = {...updatedTracks[trackIndex], sortOrder: newSortOrder};
+        updatedTracks.splice(trackIndex, 1);
+        
+        if (direction === 'up') {
+          // 如果向上移动，需要计算新位置
+          const newPosition = Math.max(0, trackIndex - 1);
+          updatedTracks.splice(newPosition, 0, track);
+        } else {
+          // 如果向下移动
+          const newPosition = Math.min(updatedTracks.length, trackIndex + 1);
+          updatedTracks.splice(newPosition, 0, track);
+        }
+        
+        setCustomTracks(updatedTracks);
+      }
+    } catch (error) {
+      console.error('重排序音轨失败:', error);
+      toast({
+        title: "排序失败",
+        description: "无法调整音轨顺序，请稍后重试",
+        variant: "error",
+      });
     }
   };
   
