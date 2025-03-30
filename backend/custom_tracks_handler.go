@@ -562,3 +562,28 @@ func analyzeAudioFile(filePath string) (float64, string, error) {
 
 	return estimatedDuration, ext, nil
 }
+
+// 导出getUserCustomTracks函数以供其他文件使用
+func getUserCustomTracks(userID, courseID, unitID string) ([]TrackInfo, error) {
+	// 获取自定义音轨
+	customTracks, err := getCustomTracks(userID, courseID, unitID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 转换CustomTrack到TrackInfo格式
+	var tracks []TrackInfo
+	for _, track := range customTracks {
+		trackInfo := TrackInfo{
+			ID:          track.ID,
+			Title:       track.Title,
+			ChineseName: track.ChineseName,
+			Duration:    track.Duration,
+			SortOrder:   track.SortOrder,
+			Custom:      true,
+		}
+		tracks = append(tracks, trackInfo)
+	}
+
+	return tracks, nil
+}
