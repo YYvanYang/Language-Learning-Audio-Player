@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, SkipBack, SkipForward, Rewind, FastForward, 
-         RepeatOne, Volume2, Settings, BarChart2 } from 'lucide-react';
+         Repeat, Volume2, Settings, BarChart2 } from 'lucide-react';
 import WaveformVisualizer from './WaveformVisualizer';
 import BookmarkList from './BookmarkList';
 import ABLoopControl from './ABLoopControl';
@@ -965,6 +965,50 @@ const AudioPlayer = ({
     setVolume(newVolume);
   };
   
+  // 音频自适应播放设置
+  const setupAdaptivePlayback = (audioContext, options = {}) => {
+    if (!audioContext) return null;
+    
+    console.log('设置自适应播放...');
+    
+    // 监控网络状况
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    let quality = options.defaultQuality || 'high'; // 默认高品质
+    
+    // 根据网络状况设置播放品质
+    const updateQuality = () => {
+      if (!connection) return;
+      
+      // 根据网络类型和带宽调整品质
+      if (connection.type === 'cellular' || connection.downlink < 1) {
+        quality = 'low';
+      } else if (connection.downlink < 5) {
+        quality = 'medium';
+      } else {
+        quality = 'high';
+      }
+      
+      console.log(`设置播放品质: ${quality}，网络下行速度: ${connection?.downlink || '未知'} Mbps`);
+    };
+    
+    // 初始设置
+    updateQuality();
+    
+    // 如果支持，监听网络变化
+    if (connection && connection.addEventListener) {
+      connection.addEventListener('change', updateQuality);
+    }
+    
+    return {
+      getQuality: () => quality,
+      cleanup: () => {
+        if (connection && connection.removeEventListener) {
+          connection.removeEventListener('change', updateQuality);
+        }
+      }
+    };
+  };
+  
   useEffect(() => {
     if (!audioContextRef.current) return;
     
@@ -989,7 +1033,7 @@ const AudioPlayer = ({
     
     // 清理函数
     return () => {
-      adaptivePlayback.dispose();
+      adaptivePlayback.cleanup();
     };
   }, []);
   
@@ -1163,7 +1207,7 @@ const AudioPlayer = ({
               className={`flex items-center ${repeatMode ? 'text-yellow-500' : 'text-gray-600'} mr-4`} 
               onClick={toggleRepeatMode}
             >
-              <RepeatOne size={18} className="mr-1" />
+              <Repeat size={18} className="mr-1" />
               <span className="text-sm">复读</span>
             </button>
             

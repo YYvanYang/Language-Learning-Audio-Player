@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { RepeatOne, X } from 'lucide-react';
+import { Repeat, X } from 'lucide-react';
 
 const ABLoopControl = ({ 
   loopRegion, 
@@ -27,7 +27,7 @@ const ABLoopControl = ({
     <div className="bg-yellow-50 border border-yellow-300 rounded-lg p-2 mt-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center">
-          <RepeatOne size={18} className={`mr-2 ${isLoopActive ? 'text-yellow-600' : 'text-gray-500'}`} />
+          <Repeat size={18} className={`mr-2 ${isLoopActive ? 'text-yellow-600' : 'text-gray-500'}`} />
           <span className="text-sm font-medium">AB循环</span>
         </div>
         <button 
