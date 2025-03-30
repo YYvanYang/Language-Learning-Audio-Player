@@ -53,6 +53,20 @@ func main() {
 		} else {
 			log.Println("数据库迁移完成")
 		}
+
+		// 添加这部分代码 - 初始化种子数据
+		seedDataEnabled := os.Getenv("ENABLE_SEED_DATA")
+		if seedDataEnabled == "true" || seedDataEnabled == "1" || (os.Getenv("GO_ENV") == "development" && seedDataEnabled != "false") {
+			// 在开发环境下默认启用种子数据，除非明确禁用
+			log.Println("准备初始化种子数据...")
+			// 确定是否强制重置数据库
+			forceReset := os.Getenv("FORCE_DB_RESET") == "true" || os.Getenv("FORCE_DB_RESET") == "1"
+
+			err = database.SeedDatabase(forceReset, os.Getenv("SEED_SCRIPT_PATH"))
+			if err != nil {
+				log.Printf("警告: 初始化种子数据失败: %v", err)
+			}
+		}
 	}
 
 	// 设置Gin路由
