@@ -460,6 +460,42 @@ backend/scripts/
 
 每个子目录包含自己的功能说明，确保脚本的用途明确。
 
+### 5.5 存储目录组织
+
+文件存储目录保持清晰的结构，以支持不同类型资源的存储需求:
+
+```
+backend/storage/
+├── audio/           # 音频文件存储
+│   ├── processed/   # 处理后的音频文件
+│   ├── transcoded/  # 经过转码的音频文件
+│   └── uploads/     # 上传的原始音频文件
+│
+├── covers/          # 封面图片存储
+│
+├── metadata/        # 元数据存储
+│
+├── temp/            # 临时文件存储
+│
+└── tracks/          # 音轨文件存储
+```
+
+所有文件存储都通过配置进行路径管理，而不是硬编码:
+- 主存储路径通过 `STORAGE_PATH` 环境变量配置
+- 音频存储路径通过 `AUDIO_STORAGE_PATH` 环境变量配置
+- 配置对象提供统一的访问接口
+
+```go
+// 正确的存储路径访问方式
+storagePath := cfg.Storage.StoragePath
+audioPath := cfg.Audio.StoragePath
+
+// 确保目录存在
+os.MkdirAll(filepath.Join(storagePath, "temp"), 0755)
+```
+
+通过这种方式，系统能够灵活地适应不同的部署环境，同时保持代码的一致性。
+
 ## 6. 改进点和注意事项
 
 ### 6.1 路径问题修复
@@ -512,6 +548,42 @@ backend/scripts/
 - 工具脚本 (`tools/`) - 自动化工具和实用程序脚本
 
 每个子目录包含自己的功能说明，确保脚本的用途明确。
+
+### 6.5 存储目录组织
+
+文件存储目录保持清晰的结构，以支持不同类型资源的存储需求:
+
+```
+backend/storage/
+├── audio/           # 音频文件存储
+│   ├── processed/   # 处理后的音频文件
+│   ├── transcoded/  # 经过转码的音频文件
+│   └── uploads/     # 上传的原始音频文件
+│
+├── covers/          # 封面图片存储
+│
+├── metadata/        # 元数据存储
+│
+├── temp/            # 临时文件存储
+│
+└── tracks/          # 音轨文件存储
+```
+
+所有文件存储都通过配置进行路径管理，而不是硬编码:
+- 主存储路径通过 `STORAGE_PATH` 环境变量配置
+- 音频存储路径通过 `AUDIO_STORAGE_PATH` 环境变量配置
+- 配置对象提供统一的访问接口
+
+```go
+// 正确的存储路径访问方式
+storagePath := cfg.Storage.StoragePath
+audioPath := cfg.Audio.StoragePath
+
+// 确保目录存在
+os.MkdirAll(filepath.Join(storagePath, "temp"), 0755)
+```
+
+通过这种方式，系统能够灵活地适应不同的部署环境，同时保持代码的一致性。
 
 ## 7. 后续扩展计划
 
