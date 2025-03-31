@@ -1,0 +1,532 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Go后端项目架构设计文档
+
+## 1. 架构概述
+
+本架构采用领域驱动设计(DDD)理念与六边形架构(Hexagonal Architecture)模式，以模块化单体(Modular Monolith)的形式实现，为小型项目提供清晰的结构与良好的可扩展性。
+
+### 1.1 核心架构原则
+
+- **领域驱动**：以业务领域为中心组织代码
+- **关注点分离**：清晰划分不同层级的职责
+- **依赖倒置**：核心业务逻辑不依赖外部实现
+- **模块自治**：业务模块独立且边界清晰
+- **渐进式演进**：支持未来向微服务架构演进
+
+### 1.2 架构层次
+
+- **领域层**：包含业务实体和核心业务逻辑
+- **应用层**：协调领域对象完成业务用例
+- **适配器层**：连接外部世界与应用核心
+  - **输入适配器**：HTTP/REST, gRPC等
+  - **输出适配器**：数据库, 外部API等
+- **基础设施层**：提供技术实现和跨领域功能
+
+## 2. 项目结构
+
+```
+project-root/
+├── cmd/                       # 应用程序入口点
+│   └── api/                   # API服务入口
+│       └── main.go            # 主程序
+├── internal/                  # 私有应用代码
+│   ├── core/                  # 核心功能和共享组件
+│   │   ├── config/            # 配置管理
+│   │   ├── errors/            # 错误处理
+│   │   └── auth/              # 认证/授权
+│   ├── domain/                # 领域模型和业务规则
+│   │   ├── user/              # 用户领域模型
+│   │   ├── product/           # 产品领域模型
+│   │   └── order/             # 订单领域模型
+│   ├── application/           # 应用服务和用例
+│   │   ├── user/              # 用户应用服务
+│   │   ├── product/           # 产品应用服务
+│   │   └── order/             # 订单应用服务
+│   ├── ports/                 # 端口定义
+│   │   ├── input/             # 输入端口(API接口)
+│   │   └── output/            # 输出端口(仓储接口)
+│   ├── adapters/              # 适配器
+│   │   ├── handlers/          # HTTP处理器
+│   │   ├── repositories/      # 数据库仓储实现
+│   │   └── clients/           # 外部服务客户端
+│   └── server/                # 服务器配置和路由
+├── pkg/                       # 可导出的公共库代码
+│   └── utils/                 # 通用工具函数
+├── api/                       # API定义
+│   ├── openapi/               # OpenAPI规范文件
+│   └── proto/                 # Protocol Buffers定义(可选)
+├── configs/                   # 配置文件
+├── migrations/                # 数据库迁移脚本
+├── scripts/                   # 构建和部署脚本
+├── docs/                      # 项目文档
+├── wire.go                    # 依赖注入配置
+└── Makefile                   # 项目管理命令
+```
+
+## 3. 技术栈选择
+
+### 3.1 Web框架
+
+**推荐**: Gin
+
+```go
+// 使用Gin的示例
+r := gin.Default() // 包含Logger和Recovery中间件
+
+// 注册自定义中间件
+r.Use(middleware.RequestID())
+r.Use(middleware.Cors())
+
+// 分组路由
+v1 := r.Group("/api/v1")
+{
+    users := v1.Group("/users")
+    {
+        users.GET("/:id", userHandler.GetUser)
+        users.POST("/", userHandler.CreateUser)
+        users.PUT("/:id", userHandler.UpdateUser)
+        users.DELETE("/:id", userHandler.DeleteUser)
+    }
+    
+    products := v1.Group("/products")
+    {
+        products.GET("/:id", productHandler.GetProduct)
+        // 其他产品相关路由...
+    }
+}
+```
+
+**选择理由**:
+- 高性能HTTP框架，基准测试表现出色
+- 丰富的内置中间件和扩展生态
+- 优雅的API设计和分组路由
+- 内置参数验证和绑定功能
+- 强大的错误管理和恢复机制
+
+### 3.2 依赖注入
+
+**推荐**: Wire
+
+```go
+// wire.go
+func InitializeAPI() (*Server, error) {
+    wire.Build(
+        config.NewConfig,
+        database.NewConnection,
+        repositories.NewUserRepository,
+        repositories.NewProductRepository,
+        services.NewUserService,
+        services.NewProductService,
+        handlers.NewUserHandler,
+        handlers.NewProductHandler,
+        NewServer,
+    )
+    return &Server{}, nil
+}
+```
+
+**选择理由**:
+- 编译时依赖注入，无运行时开销
+- 代码生成减少手动连接依赖的样板代码
+- 支持错误传播和条件注入
+- 简化测试替换模拟实现
+
+### 3.3 数据访问
+
+**推荐**: GORM + 原生SQL组合
+
+```go
+// 仓储实现示例
+type UserRepository struct {
+    db *gorm.DB
+}
+
+func (r *UserRepository) FindByID(id string) (*domain.User, error) {
+    var user domain.User
+    if err := r.db.First(&user, "id = ?", id).Error; err != nil {
+        return nil, err
+    }
+    return &user, nil
+}
+
+func (r *UserRepository) FindWithAnalytics(id string) (*domain.UserStats, error) {
+    var stats domain.UserStats
+    // 复杂查询使用原生SQL
+    if err := r.db.Raw(`
+        SELECT u.*, 
+               COUNT(DISTINCT o.id) as order_count,
+               SUM(o.total) as total_spent
+        FROM users u
+        LEFT JOIN orders o ON u.id = o.user_id
+        WHERE u.id = ?
+        GROUP BY u.id
+    `, id).Scan(&stats).Error; err != nil {
+        return nil, err
+    }
+    return &stats, nil
+}
+```
+
+**选择理由**:
+- GORM提供快速开发和基本CRUD操作
+- 原生SQL处理复杂查询和性能关键路径
+- 混合策略平衡开发效率和性能
+
+### 3.4 API文档
+
+**推荐**: Swagger/OpenAPI + swag
+
+```go
+// handler.go
+// @Summary Get user by ID
+// @Description Retrieve a user by their unique identifier
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 200 {object} responses.UserResponse
+// @Failure 400 {object} responses.ErrorResponse
+// @Failure 404 {object} responses.ErrorResponse
+// @Router /api/v1/users/{id} [get]
+func (h *UserHandler) GetUser(c *gin.Context) {
+    id := c.Param("id")
+    
+    user, err := h.userService.GetUserByID(c.Request.Context(), id)
+    if err != nil {
+        c.JSON(http.StatusBadRequest, responses.ErrorResponse{
+            Error: err.Error(),
+        })
+        return
+    }
+    
+    c.JSON(http.StatusOK, user)
+}
+```
+
+**选择理由**:
+- 代码注释生成文档，减少维护负担
+- 提供交互式API测试界面
+- 支持客户端代码生成
+- 行业标准API描述格式
+
+## 4. 层级职责
+
+### 4.1 领域层
+
+- 定义业务实体和值对象
+- 实现领域服务和核心业务规则
+- 定义领域事件和领域异常
+- 不依赖其他层和外部框架
+
+```go
+// domain/user/user.go
+package user
+
+import (
+    "time"
+    "github.com/example/myapp/internal/domain/errors"
+)
+
+type User struct {
+    ID        string
+    Email     string
+    Password  string
+    FirstName string
+    LastName  string
+    CreatedAt time.Time
+    UpdatedAt time.Time
+}
+
+func NewUser(email, firstName, lastName string) (*User, error) {
+    if email == "" {
+        return nil, errors.NewValidationError("email cannot be empty")
+    }
+    
+    return &User{
+        ID:        uuid.New().String(),
+        Email:     email,
+        FirstName: firstName,
+        LastName:  lastName,
+        CreatedAt: time.Now(),
+        UpdatedAt: time.Now(),
+    }, nil
+}
+
+func (u *User) ChangePassword(password string) error {
+    if len(password) < 8 {
+        return errors.NewValidationError("password too short")
+    }
+    
+    u.Password = password
+    u.UpdatedAt = time.Now()
+    return nil
+}
+```
+
+### 4.2 应用层
+
+- 协调领域对象实现用例
+- 处理事务和安全控制
+- 实现输入端口接口
+- 依赖输出端口接口（不依赖具体实现）
+
+```go
+// application/user/service.go
+package user
+
+import (
+    "context"
+    "github.com/example/myapp/internal/domain/user"
+    "github.com/example/myapp/internal/ports/output"
+)
+
+type Service struct {
+    userRepo output.UserRepository
+}
+
+func NewService(userRepo output.UserRepository) *Service {
+    return &Service{
+        userRepo: userRepo,
+    }
+}
+
+func (s *Service) CreateUser(ctx context.Context, email, firstName, lastName, password string) (*user.User, error) {
+    newUser, err := user.NewUser(email, firstName, lastName)
+    if err != nil {
+        return nil, err
+    }
+    
+    if err := newUser.ChangePassword(password); err != nil {
+        return nil, err
+    }
+    
+    if err := s.userRepo.Save(ctx, newUser); err != nil {
+        return nil, err
+    }
+    
+    return newUser, nil
+}
+```
+
+### 4.3 端口层
+
+- 定义应用的输入和输出接口
+- 输入端口：应用提供的服务接口
+- 输出端口：应用需要的外部服务接口
+
+```go
+// ports/input/user_service.go
+package input
+
+import (
+    "context"
+    "github.com/example/myapp/internal/domain/user"
+)
+
+type UserService interface {
+    CreateUser(ctx context.Context, email, firstName, lastName, password string) (*user.User, error)
+    GetUserByID(ctx context.Context, id string) (*user.User, error)
+    UpdateUser(ctx context.Context, id string, firstName, lastName string) (*user.User, error)
+    DeleteUser(ctx context.Context, id string) error
+}
+
+// ports/output/user_repository.go
+package output
+
+import (
+    "context"
+    "github.com/example/myapp/internal/domain/user"
+)
+
+type UserRepository interface {
+    FindByID(ctx context.Context, id string) (*user.User, error)
+    FindByEmail(ctx context.Context, email string) (*user.User, error)
+    Save(ctx context.Context, user *user.User) error
+    Update(ctx context.Context, user *user.User) error
+    Delete(ctx context.Context, id string) error
+}
+```
+
+### 4.4 适配器层
+
+- 实现端口接口，连接外部世界与应用核心
+- 输入适配器：HTTP处理器、gRPC处理器等
+- 输出适配器：数据库仓储、外部API客户端等
+
+```go
+// adapters/handlers/user_handler.go
+package handlers
+
+import (
+    "net/http"
+    "github.com/gin-gonic/gin"
+    "github.com/example/myapp/internal/ports/input"
+)
+
+type UserHandler struct {
+    userService input.UserService
+}
+
+func NewUserHandler(userService input.UserService) *UserHandler {
+    return &UserHandler{
+        userService: userService,
+    }
+}
+
+// 注册路由
+func RegisterUserRoutes(r *gin.RouterGroup, h *UserHandler) {
+    r.GET("/:id", h.GetUser)
+    r.POST("/", h.CreateUser)
+    r.PUT("/:id", h.UpdateUser)
+    r.DELETE("/:id", h.DeleteUser)
+}
+
+func (h *UserHandler) GetUser(c *gin.Context) {
+    id := c.Param("id")
+    
+    user, err := h.userService.GetUserByID(c.Request.Context(), id)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{
+            "error": err.Error(),
+        })
+        return
+    }
+    
+    c.JSON(http.StatusOK, user)
+}
+
+// adapters/repositories/user_repository.go
+package repositories
+
+import (
+    "context"
+    "gorm.io/gorm"
+    "github.com/example/myapp/internal/domain/user"
+)
+
+type UserRepository struct {
+    db *gorm.DB
+}
+
+func NewUserRepository(db *gorm.DB) *UserRepository {
+    return &UserRepository{
+        db: db,
+    }
+}
+
+func (r *UserRepository) FindByID(ctx context.Context, id string) (*user.User, error) {
+    var userModel UserModel
+    if err := r.db.First(&userModel, "id = ?", id).Error; err != nil {
+        return nil, err
+    }
+    return userModel.ToDomain(), nil
+}
+```
+
+## 5. 开发流程
+
+### 5.1 服务启动流程
+
+```go
+// cmd/api/main.go
+package main
+
+import (
+    "log"
+    "github.com/gin-gonic/gin"
+    "github.com/example/myapp/internal/server"
+)
+
+func main() {
+    // 设置Gin模式
+    gin.SetMode(gin.ReleaseMode) // 生产环境
+    
+    // 使用Wire生成的依赖注入
+    app, err := InitializeAPI()
+    if err != nil {
+        log.Fatalf("Failed to initialize application: %v", err)
+    }
+    
+    // 获取Gin引擎和配置
+    router := app.Router
+    config := app.Config
+    
+    log.Printf("Starting server on %s", config.ServerAddress)
+    if err := router.Run(config.ServerAddress); err != nil {
+        log.Fatalf("Server error: %v", err)
+    }
+}
+```
+
+### 5.2 API开发流程
+
+1. 定义领域模型和规则
+2. 定义端口接口
+3. 实现应用服务
+4. 实现适配器
+5. 配置路由和依赖注入
+6. 编写API文档注释
+7. 生成Swagger文档
+
+### 5.3 测试策略
+
+- **单元测试**：测试领域和应用逻辑
+- **集成测试**：测试适配器与外部系统交互
+- **API测试**：测试HTTP端点
+
+```go
+// application/user/service_test.go
+func TestCreateUser(t *testing.T) {
+    // 设置模拟仓储
+    mockRepo := mocks.NewUserRepository(t)
+    mockRepo.On("Save", mock.Anything, mock.AnythingOfType("*user.User")).Return(nil)
+    
+    // 创建服务实例
+    service := user.NewService(mockRepo)
+    
+    // 执行测试
+    user, err := service.CreateUser(context.Background(), "test@example.com", "John", "Doe", "password123")
+    
+    // 断言
+    assert.NoError(t, err)
+    assert.NotNil(t, user)
+    assert.Equal(t, "test@example.com", user.Email)
+    mockRepo.AssertExpectations(t)
+}
+```
+
+## 6. 扩展与演进
+
+### 6.1 从单体到微服务
+
+- 每个业务模块都设计为可独立部署
+- 使用统一的API接口风格
+- 考虑未来的服务边界设计
+
+### 6.2 性能优化策略
+
+- 使用连接池管理数据库连接
+- 实现缓存层减少数据库负载
+- 针对热点路径优化SQL和业务逻辑
+
+### 6.3 安全最佳实践
+
+- 实现统一的认证/授权中间件
+- 所有外部输入进行验证
+- 敏感数据加密存储
+- 使用HTTPS和适当的CORS设置
+
+## 7. 参考资源
+
+- [Go标准项目布局](https://github.com/golang-standards/project-layout)
+- [Go Clean Architecture](https://blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html)
+- [领域驱动设计](https://martinfowler.com/bliki/DomainDrivenDesign.html)
+- [Gin Web框架](https://github.com/gin-gonic/gin)
+- [GORM文档](https://gorm.io/docs/)
+- [Wire依赖注入](https://github.com/google/wire)
+- [Swag文档生成](https://github.com/swaggo/swag)
+- [Gin Swagger集成](https://github.com/swaggo/gin-swagger)
