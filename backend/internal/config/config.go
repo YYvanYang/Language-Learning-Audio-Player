@@ -19,6 +19,8 @@ type Config struct {
 	JWT           JWTConfig
 	Storage       StorageConfig
 	CORS          CORSConfig
+	Audio         AudioConfig
+	AudioToken    AudioTokenConfig
 }
 
 // DatabaseConfig 数据库配置
@@ -45,6 +47,20 @@ type StorageConfig struct {
 // CORSConfig CORS配置
 type CORSConfig struct {
 	AllowOrigins []string
+}
+
+// AudioConfig 音频配置
+type AudioConfig struct {
+	StoragePath  string
+	WaveformPath string
+	AllowFormats []string
+	MaxFileSize  int64 // 单位：字节
+}
+
+// AudioTokenConfig 音频令牌配置
+type AudioTokenConfig struct {
+	Secret        string
+	ExpiryMinutes int // 分钟
 }
 
 // Load 加载配置
@@ -99,6 +115,15 @@ func setDefaults() {
 
 	// 存储默认值
 	viper.SetDefault("storage.path", "./storage")
+
+	// 音频配置默认值
+	viper.SetDefault("audio.storagePath", "./data/audio")
+	viper.SetDefault("audio.waveformPath", "./data/waveforms")
+	viper.SetDefault("audio.allowFormats", []string{"mp3", "wav", "ogg", "flac", "m4a"})
+	viper.SetDefault("audio.maxFileSize", 100*1024*1024) // 100MB
+
+	// 音频令牌配置默认值
+	viper.SetDefault("audioToken.expiryMinutes", 10) // 10分钟
 }
 
 // 绑定环境变量
@@ -124,6 +149,16 @@ func bindEnvVariables() {
 
 	// CORS环境变量
 	viper.BindEnv("cors.allowOrigins", "CORS_ALLOW_ORIGINS")
+
+	// 音频配置环境变量
+	viper.BindEnv("audio.storagePath", "AUDIO_STORAGE_PATH")
+	viper.BindEnv("audio.waveformPath", "AUDIO_WAVEFORM_PATH")
+	viper.BindEnv("audio.allowFormats", "AUDIO_ALLOW_FORMATS")
+	viper.BindEnv("audio.maxFileSize", "AUDIO_MAX_FILE_SIZE")
+
+	// 音频令牌配置环境变量
+	viper.BindEnv("audioToken.secret", "AUDIO_TOKEN_SECRET")
+	viper.BindEnv("audioToken.expiryMinutes", "AUDIO_TOKEN_EXPIRY")
 }
 
 // 直接从环境变量中覆盖某些配置
@@ -149,6 +184,36 @@ func overrideFromEnv(cfg Config) Config {
 	// JWT密钥是安全关键，确保直接从环境变量读取
 	if secret := os.Getenv("JWT_SECRET"); secret != "" {
 		cfg.JWT.Secret = secret
+	}
+
+	// 音频配置
+	if path := os.Getenv("AUDIO_STORAGE_PATH"); path != "" {
+		cfg.Audio.StoragePath = path
+	}
+
+	if path := os.Getenv("AUDIO_WAVEFORM_PATH"); path != "" {
+		cfg.Audio.WaveformPath = path
+	}
+
+	if formats := os.Getenv("AUDIO_ALLOW_FORMATS"); formats != "" {
+		cfg.Audio.AllowFormats = strings.Split(formats, ",")
+	}
+
+	if size := os.Getenv("AUDIO_MAX_FILE_SIZE"); size != "" {
+		if maxSize, err := strconv.ParseInt(size, 10, 64); err == nil && maxSize > 0 {
+			cfg.Audio.MaxFileSize = maxSize
+		}
+	}
+
+	// 音频令牌配置
+	if secret := os.Getenv("AUDIO_TOKEN_SECRET"); secret != "" {
+		cfg.AudioToken.Secret = secret
+	}
+
+	if expiry := os.Getenv("AUDIO_TOKEN_EXPIRY"); expiry != "" {
+		if minutes, err := strconv.Atoi(expiry); err == nil && minutes > 0 {
+			cfg.AudioToken.ExpiryMinutes = minutes
+		}
 	}
 
 	return cfg

@@ -54,6 +54,10 @@
   - [x] 自定义音轨仓储层
   - [x] 自定义音轨服务层
   - [x] 自定义音轨处理器
+- [x] 重构音频服务 (`internal/audio`)
+  - [x] 音频领域模型
+  - [x] 音频服务层
+  - [x] 音频处理器
 
 ### 2.2 进行中的部分
 
@@ -61,7 +65,8 @@
 
 ### 2.3 下一步计划
 
-- [ ] 重构音频服务 (`internal/audio`)
+- [ ] 重构管理员模块 (`internal/admin`)
+- [ ] 集成测试
 
 ## 3. 模块重构计划
 
@@ -202,10 +207,91 @@ func (s *AudioService) GetAudioMetadata(trackID string) (*domain.AudioMetadata, 
 
 ```
 internal/admin/
+├── repository/
+│   └── repository.go
 ├── service/
 │   └── service.go
 └── handler/
     └── handler.go
+```
+
+**领域模型**:
+```go
+// internal/domain/admin.go
+package domain
+
+// AdminStats 管理统计信息
+type AdminStats struct {
+	TotalUsers         int64
+	ActiveUsers        int64
+	TotalCourses       int64
+	TotalTracks        int64
+	TotalCustomTracks  int64
+	StorageUsed        int64
+	NewUsersLastWeek   int64
+	NewUsersLastMonth  int64
+	ActiveCoursesCount int64
+}
+
+// AdminService 管理员服务接口
+type AdminService interface {
+	// GetStats 获取系统统计信息
+	GetStats() (*AdminStats, error)
+	
+	// GetAllUsers 获取所有用户
+	GetAllUsers(page, pageSize int) ([]*User, int64, error)
+	
+	// GetUserByID 获取用户详情
+	GetUserByID(id string) (*User, error)
+	
+	// UpdateUser 更新用户信息
+	UpdateUser(user *User) error
+	
+	// DeleteUser 删除用户
+	DeleteUser(id string) error
+	
+	// GetSystemLogs 获取系统日志
+	GetSystemLogs(level string, startDate, endDate time.Time, page, pageSize int) ([]string, int64, error)
+}
+```
+
+**服务层**:
+```go
+// internal/admin/service/service.go
+package service
+
+import (
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
+)
+
+type AdminService struct {
+	userRepo         domain.UserRepository
+	courseRepo       domain.CourseRepository
+	trackRepo        domain.TrackRepository
+	customTrackRepo  domain.CustomTrackRepository
+}
+
+// NewAdminService 创建管理员服务实例
+func NewAdminService(
+	userRepo domain.UserRepository,
+	courseRepo domain.CourseRepository,
+	trackRepo domain.TrackRepository,
+	customTrackRepo domain.CustomTrackRepository,
+) *AdminService {
+	return &AdminService{
+		userRepo:        userRepo,
+		courseRepo:      courseRepo,
+		trackRepo:       trackRepo,
+		customTrackRepo: customTrackRepo,
+	}
+}
+
+// GetStats 获取系统统计信息
+func (s *AdminService) GetStats() (*domain.AdminStats, error) {
+	// 实现统计逻辑
+}
+
+// 更多方法实现...
 ```
 
 ## 4. 实施计划

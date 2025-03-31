@@ -12,6 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/handler"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/service"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/database"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/middleware"
@@ -141,29 +143,12 @@ func setupCourseRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Con
 
 // setupAudioRoutes 设置音频相关路由
 func setupAudioRoutes(apiGroup *gin.RouterGroup, router *gin.Engine, cfg *config.Config, db *database.Connection, authMiddleware gin.HandlerFunc) {
-	// TODO: 导入并使用重构后的音频服务和处理器
+	// 创建音频服务
+	audioService := service.NewAudioService(cfg)
+	audioHandler := handler.NewAudioHandler(audioService)
 
-	// 公开音频令牌路由 - 需要认证
-	audioTokenGroup := apiGroup.Group("/audio/token")
-	audioTokenGroup.Use(authMiddleware)
-
-	audioTokenGroup.GET("/:trackId", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "获取音频令牌功能即将实现"})
-	})
-
-	// 音频流路由 - 需要令牌验证
-	// 注意这里使用根路由器以避免认证中间件干扰
-	router.GET("/api/v1/audio/stream/:trackId", func(c *gin.Context) {
-		c.String(http.StatusOK, "音频流功能即将实现")
-	})
-
-	// 音频元数据路由 - 需要认证
-	audioMetadataGroup := apiGroup.Group("/audio/metadata")
-	audioMetadataGroup.Use(authMiddleware)
-
-	audioMetadataGroup.GET("/:trackId", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "获取音频元数据功能即将实现"})
-	})
+	// 注册路由
+	audioHandler.RegisterRoutes(router, apiGroup, authMiddleware)
 }
 
 // setupCustomTracksRoutes 设置用户自定义音轨路由
