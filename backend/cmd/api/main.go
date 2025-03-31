@@ -17,9 +17,15 @@ import (
 	adminService "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/admin/service"
 	audioHandler "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/handler"
 	audioService "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/service"
+	authHandler "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/auth/handler"
+	authService "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/auth/service"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
+	courseHandler "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/course/handler"
 	courseRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/course/repository"
+	courseService "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/course/service"
+	customtrackHandler "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/customtrack/handler"
 	customtrackRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/customtrack/repository"
+	customtrackService "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/customtrack/service"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/database"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/middleware"
 	trackRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/track/repository"
@@ -120,32 +126,32 @@ func setupRoutes(r *gin.Engine, cfg *config.Config, db *database.Connection) {
 
 // setupAuthRoutes 设置认证相关路由
 func setupAuthRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection) {
-	// TODO: 导入并使用重构后的auth服务和处理器
-	auth := rg.Group("/auth")
+	// 创建仓储实例
+	userRepo := userRepository.NewUserRepository(db.GetDB())
 
-	auth.POST("/login", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "登录功能即将实现"})
-	})
+	// 创建服务实例
+	authService := authService.NewAuthService(cfg, userRepo)
 
-	auth.POST("/register", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "注册功能即将实现"})
-	})
+	// 创建处理器实例
+	authHandler := authHandler.NewAuthHandler(authService)
 
-	auth.GET("/validate", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "验证功能即将实现"})
-	})
+	// 注册路由
+	authHandler.RegisterRoutes(rg)
 }
 
 // setupCourseRoutes 设置课程相关路由
 func setupCourseRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection) {
-	// TODO: 导入并使用重构后的课程服务和处理器
-	rg.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "获取课程列表功能即将实现"})
-	})
+	// 创建仓储实例
+	courseRepo := courseRepository.NewCourseRepository(db.GetDB())
 
-	rg.GET("/:id", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "获取单个课程功能即将实现"})
-	})
+	// 创建服务实例
+	courseService := courseService.NewCourseService(courseRepo)
+
+	// 创建处理器实例
+	courseHandler := courseHandler.NewCourseHandler(courseService)
+
+	// 注册路由
+	courseHandler.RegisterRoutes(rg)
 }
 
 // setupAudioRoutes 设置音频相关路由
@@ -160,14 +166,17 @@ func setupAudioRoutes(apiGroup *gin.RouterGroup, router *gin.Engine, cfg *config
 
 // setupCustomTracksRoutes 设置用户自定义音轨路由
 func setupCustomTracksRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection) {
-	// TODO: 导入并使用重构后的自定义音轨服务和处理器
-	rg.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "获取自定义音轨列表功能即将实现"})
-	})
+	// 创建仓储实例
+	customTrackRepo := customtrackRepository.NewCustomTrackRepository(db.GetDB())
 
-	rg.POST("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "上传自定义音轨功能即将实现"})
-	})
+	// 创建服务实例
+	customTrackService := customtrackService.NewCustomTrackService(customTrackRepo)
+
+	// 创建处理器实例
+	customTrackHandler := customtrackHandler.NewCustomTrackHandler(customTrackService)
+
+	// 注册路由
+	customTrackHandler.RegisterRoutes(rg)
 }
 
 // setupAdminRoutes 设置管理员路由
