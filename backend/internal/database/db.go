@@ -9,8 +9,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/models"
+	"language-learning/internal/config"
+	"language-learning/internal/models"
 )
 
 // Connection 数据库连接结构

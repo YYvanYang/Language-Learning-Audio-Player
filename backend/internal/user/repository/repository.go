@@ -6,8 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/models"
+	"language-learning/internal/domain"
+	"language-learning/internal/models"
 )
 
 // UserRepository 用户仓储实现

@@ -8,8 +8,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/models"
+	"language-learning/internal/domain"
+	"language-learning/internal/models"
 )
 
 // CustomTrackRepository 自定义音轨仓储实现

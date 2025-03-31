@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/utils/logger"
+	"language-learning/internal/config"
+	"language-learning/internal/domain"
+	"language-learning/internal/utils/logger"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"go.uber.org/zap"

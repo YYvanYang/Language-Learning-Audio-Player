@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/utils/logger"
+	"language-learning/internal/config"
+	"language-learning/internal/domain"
+	"language-learning/internal/utils/logger"
 
 	"go.uber.org/zap"
 )

@@ -10,10 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/database"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/middleware"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/models"
+	"language-learning/internal/config"
+	"language-learning/internal/database"
+	"language-learning/internal/middleware"
+	"language-learning/internal/models"
 )
 
 var (

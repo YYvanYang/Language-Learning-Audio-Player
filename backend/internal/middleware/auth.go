@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
+	"language-learning/internal/config"
 )
 
 // JWTClaims 定义JWT令牌中的声明

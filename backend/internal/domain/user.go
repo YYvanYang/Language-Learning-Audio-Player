@@ -46,22 +46,6 @@ type UserRepository interface {
 	HasCourseAccess(userID, courseID string) (bool, error)
 }
 
-// RegisterRequest 用户注册请求
-type RegisterRequest struct {
-	Username  string `json:"username" binding:"required,min=3,max=50"`
-	Email     string `json:"email" binding:"required,email"`
-	Password  string `json:"password" binding:"required,min=8"`
-	FirstName string `json:"firstName" binding:"required"`
-	LastName  string `json:"lastName" binding:"required"`
-}
-
-// LoginRequest 用户登录请求
-type LoginRequest struct {
-	Username string `json:"username" binding:"required_without=Email"`
-	Email    string `json:"email" binding:"required_without=Username,omitempty,email"`
-	Password string `json:"password" binding:"required"`
-}
-
 // UserResponse 用户响应
 type UserResponse struct {
 	ID        string    `json:"id"`

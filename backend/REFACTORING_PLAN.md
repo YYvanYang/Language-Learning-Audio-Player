@@ -303,6 +303,121 @@ func (s *AdminService) GetStats() (*domain.AdminStats, error) {
 // 更多方法实现...
 ```
 
+### 3.6 认证模块 (`internal/auth`)
+
+```
+internal/auth/
+├── repository/
+│   └── repository.go
+├── service/
+│   └── service.go
+└── handler/
+    └── handler.go
+```
+
+**领域模型**:
+```go
+// internal/domain/auth.go
+package domain
+
+type RegisterRequest struct {
+    Username string
+    Email    string
+    Password string
+}
+
+type LoginRequest struct {
+    Username string
+    Password string
+}
+
+type User struct {
+    ID        string
+    Username  string
+    Email     string
+    Password  string
+    LastLogin time.Time
+}
+
+type AuthRepository interface {
+    Register(req RegisterRequest) error
+    Login(req LoginRequest) (*User, error)
+    FindByID(id string) (*User, error)
+    Update(user *User) error
+    Delete(id string) error
+}
+```
+
+**服务层**:
+```go
+// internal/auth/service/service.go
+package service
+
+import (
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
+)
+
+type AuthService struct {
+	userRepo domain.AuthRepository
+}
+
+func (s *AuthService) Register(req domain.RegisterRequest) error {
+    // 实现注册逻辑
+}
+
+func (s *AuthService) Login(req domain.LoginRequest) (*domain.User, error) {
+    // 实现登录逻辑
+}
+
+func (s *AuthService) FindByID(id string) (*domain.User, error) {
+    // 实现根据ID查找用户逻辑
+}
+
+func (s *AuthService) Update(user *domain.User) error {
+    // 实现更新用户逻辑
+}
+
+func (s *AuthService) Delete(id string) error {
+    // 实现删除用户逻辑
+}
+```
+
+**处理器**:
+```go
+// internal/auth/handler/handler.go
+package handler
+
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
+
+type AuthHandler struct {
+	authService *service.AuthService
+}
+
+func (h *AuthHandler) Register(c *gin.Context) {
+    // 实现注册处理器逻辑
+}
+
+func (h *AuthHandler) Login(c *gin.Context) {
+    // 实现登录处理器逻辑
+}
+
+func (h *AuthHandler) FindByID(c *gin.Context) {
+    // 实现根据ID查找用户处理器逻辑
+}
+
+func (h *AuthHandler) Update(c *gin.Context) {
+    // 实现更新用户处理器逻辑
+}
+
+func (h *AuthHandler) Delete(c *gin.Context) {
+    // 实现删除用户处理器逻辑
+}
+```
+
 ## 4. 实施计划
 
 ### 4.1 阶段一：基础结构调整 (已完成)
@@ -495,6 +610,30 @@ os.MkdirAll(filepath.Join(storagePath, "temp"), 0755)
 ```
 
 通过这种方式，系统能够灵活地适应不同的部署环境，同时保持代码的一致性。
+
+### 5.6 模块名重构
+
+为了使代码更简洁，我们对 Go 模块名进行了重构：
+
+1. **原模块名**：
+   ```go
+   github.com/YYvanYang/Language-Learning-Audio-Player/backend
+   ```
+
+2. **新模块名**：
+   ```go
+   language-learning
+   ```
+
+重构模块名的好处：
+- 显著缩短了导入路径长度，提高了代码可读性
+- 更简洁，适合私有项目使用
+- 使用全小写，符合 Go 的命名惯例
+
+重构后仍需解决以下问题：
+1. `RegisterRequest` 和 `LoginRequest` 结构体在 `auth.go` 和 `user.go` 中有不同定义
+2. 一些 Repository 接口方法如 `CountActive`、`CountCreatedAfter` 等尚未实现
+3. `User` 结构体中的 `LastLoginAt` 和 `Name` 字段可能需要更新
 
 ## 6. 改进点和注意事项
 
