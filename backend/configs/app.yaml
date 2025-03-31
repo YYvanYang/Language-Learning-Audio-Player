@@ -1,0 +1,48 @@
+# app.yaml 配置文件
+# 此文件包含语言学习音频播放器后端服务的配置选项
+
+# 服务器基本配置
+environment: development
+serverAddress: 0.0.0.0
+port: 8080
+
+# 数据库配置
+database:
+  host: localhost
+  port: 5432
+  username: audio_user
+  password: secure_password  # 生产环境请修改
+  dbname: language_learning
+  sslmode: disable  # 生产环境建议使用require或verify-ca
+
+# JWT认证配置
+jwt:
+  secret: your-jwt-secret-key-replace-in-production  # 生产环境必须修改
+  expiresIn: 24  # JWT令牌有效期（小时）
+
+# 存储配置
+storage:
+  path: ./storage  # 主存储目录
+
+# CORS设置
+cors:
+  allowOrigins:
+    - http://localhost:3000
+    - https://app.example.com
+
+# 音频配置
+audio:
+  storagePath: ./data/audio  # 音频文件存储路径
+  waveformPath: ./data/waveforms  # 波形数据存储路径
+  allowFormats:
+    - mp3
+    - wav
+    - ogg
+    - flac
+    - m4a
+  maxFileSize: 104857600  # 100MB
+
+# 音频令牌配置
+audioToken:
+  secret: your-audio-token-secret-key  # 生产环境必须修改
+  expiryMinutes: 10  # 音频令牌有效期（分钟） 
