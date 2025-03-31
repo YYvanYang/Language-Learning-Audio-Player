@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/your-project/backend/internal/config"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
 )
 
 // CORS 返回CORS中间件

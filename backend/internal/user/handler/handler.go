@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 
-	"github.com/your-project/backend/internal/config"
-	"github.com/your-project/backend/internal/domain"
-	"github.com/your-project/backend/internal/middleware"
-	"github.com/your-project/backend/internal/user/service"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/middleware"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/user/service"
 )
 
 // UserHandler 用户请求处理器

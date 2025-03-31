@@ -12,9 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/your-project/backend/internal/config"
-	"github.com/your-project/backend/internal/database"
-	"github.com/your-project/backend/internal/middleware"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/database"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/middleware"
 )
 
 func main() {

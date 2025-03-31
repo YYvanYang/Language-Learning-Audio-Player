@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/your-project/backend/internal/domain"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
 )
 
 // UserService 用户服务

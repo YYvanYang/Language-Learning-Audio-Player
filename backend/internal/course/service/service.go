@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/your-project/backend/internal/domain"
-	"github.com/your-project/backend/internal/utils/logger"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/domain"
+	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/utils/logger"
 
 	"go.uber.org/zap"
 )
