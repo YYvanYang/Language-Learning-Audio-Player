@@ -12,11 +12,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/handler"
-	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/service"
+	adminHandler "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/admin/handler"
+	adminRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/admin/repository"
+	adminService "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/admin/service"
+	audioHandler "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/handler"
+	audioService "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/audio/service"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/config"
+	courseRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/course/repository"
+	customtrackRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/customtrack/repository"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/database"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/middleware"
+	trackRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/track/repository"
+	userRepository "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/user/repository"
 )
 
 func main() {
@@ -144,8 +151,8 @@ func setupCourseRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Con
 // setupAudioRoutes 设置音频相关路由
 func setupAudioRoutes(apiGroup *gin.RouterGroup, router *gin.Engine, cfg *config.Config, db *database.Connection, authMiddleware gin.HandlerFunc) {
 	// 创建音频服务
-	audioService := service.NewAudioService(cfg)
-	audioHandler := handler.NewAudioHandler(audioService)
+	audioService := audioService.NewAudioService(cfg)
+	audioHandler := audioHandler.NewAudioHandler(audioService)
 
 	// 注册路由
 	audioHandler.RegisterRoutes(router, apiGroup, authMiddleware)
@@ -165,10 +172,28 @@ func setupCustomTracksRoutes(rg *gin.RouterGroup, cfg *config.Config, db *databa
 
 // setupAdminRoutes 设置管理员路由
 func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection) {
-	// TODO: 导入并使用重构后的管理员服务和处理器
-	rg.GET("/users", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"message": "获取用户列表功能即将实现"})
-	})
+	// 创建仓储实例
+	adminRepo := adminRepository.NewAdminRepository(db.GetDB())
+	userRepo := userRepository.NewUserRepository(db.GetDB())
+	courseRepo := courseRepository.NewCourseRepository(db.GetDB())
+	trackRepo := trackRepository.NewTrackRepository(db.GetDB())
+	customTrackRepo := customtrackRepository.NewCustomTrackRepository(db.GetDB())
+
+	// 创建服务实例
+	adminService := adminService.NewAdminService(
+		cfg,
+		userRepo,
+		courseRepo,
+		trackRepo,
+		customTrackRepo,
+		db.GetDB(),
+	)
+
+	// 创建处理器实例
+	adminHandler := adminHandler.NewAdminHandler(adminService)
+
+	// 注册路由
+	adminHandler.RegisterRoutes(rg)
 }
 
 // gracefulShutdown 实现优雅关闭
