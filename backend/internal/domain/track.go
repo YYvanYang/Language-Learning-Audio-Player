@@ -46,6 +46,9 @@ type TrackRepository interface {
 	// Delete 删除音轨
 	Delete(id string) error
 
+	// Count 统计音轨总数
+	Count() (int64, error)
+
 	// ReorderTracks 重新排序单元内的音轨
 	ReorderTracks(unitID string, trackIDs []string) error
 

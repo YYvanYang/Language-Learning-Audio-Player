@@ -97,3 +97,8 @@ func getLogLevel(env string) logger.LogLevel {
 		return logger.Info
 	}
 }
+
+// GetDB 返回GORM数据库实例
+func (c *Connection) GetDB() *gorm.DB {
+	return c.DB
+}

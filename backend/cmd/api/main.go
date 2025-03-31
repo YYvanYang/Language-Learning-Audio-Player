@@ -15,7 +15,6 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 
 	adminHandler "language-learning/internal/admin/handler"
-	adminRepository "language-learning/internal/admin/repository"
 	adminService "language-learning/internal/admin/service"
 	audioHandler "language-learning/internal/audio/handler"
 	audioService "language-learning/internal/audio/service"
@@ -115,38 +114,26 @@ func main() {
 	gracefulShutdown(srv, db)
 }
 
-// setupRoutes 设置所有路由
+// setupRoutes 设置路由
 func setupRoutes(r *gin.Engine, cfg *config.Config, db *database.Connection) {
-	// 健康检查路由
-	r.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"status": "ok",
-			"time":   time.Now().Format(time.RFC3339),
-		})
-	})
+	// 创建认证中间件
+	authMiddleware := middleware.AuthMiddleware(cfg)
+	adminMiddleware := middleware.RoleMiddleware("admin")
 
-	// API v1 路由组
+	// API路由组
 	v1 := r.Group("/api/v1")
 
-	// 设置认证路由
-	// 这些路由都是公开的，不需要认证
+	// 认证路由 - 不需要认证
 	setupAuthRoutes(v1, cfg, db)
 
-	// 认证中间件
-	authMiddleware := middleware.AuthMiddleware(cfg)
+	// 课程路由 - 部分需要认证
+	setupCourseRoutes(v1, cfg, db, authMiddleware, adminMiddleware)
 
-	// 课程路由 - 需要认证
-	courseRoutes := v1.Group("/courses")
-	courseRoutes.Use(authMiddleware)
-	setupCourseRoutes(courseRoutes, cfg, db)
-
-	// 音频路由 - 一部分需要认证
+	// 音频路由 - 需要认证
 	setupAudioRoutes(v1, r, cfg, db, authMiddleware)
 
-	// 用户自定义音轨路由 - 需要认证
-	customTracksRoutes := v1.Group("/tracks/custom")
-	customTracksRoutes.Use(authMiddleware)
-	setupCustomTracksRoutes(customTracksRoutes, cfg, db)
+	// 自定义音轨路由 - 部分需要认证
+	setupCustomTracksRoutes(v1, cfg, db, authMiddleware)
 
 	// 管理员路由 - 需要认证和管理员角色
 	adminRoutes := v1.Group("/admin")
@@ -170,7 +157,7 @@ func setupAuthRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Conne
 }
 
 // setupCourseRoutes 设置课程相关路由
-func setupCourseRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection) {
+func setupCourseRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection, authMiddleware gin.HandlerFunc, adminMiddleware gin.HandlerFunc) {
 	// 创建仓储实例
 	courseRepo := courseRepository.NewCourseRepository(db.GetDB())
 
@@ -181,7 +168,7 @@ func setupCourseRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Con
 	courseHandler := courseHandler.NewCourseHandler(courseService)
 
 	// 注册路由
-	courseHandler.RegisterRoutes(rg)
+	courseHandler.RegisterRoutes(rg, authMiddleware, adminMiddleware)
 }
 
 // setupAudioRoutes 设置音频相关路由
@@ -195,7 +182,7 @@ func setupAudioRoutes(apiGroup *gin.RouterGroup, router *gin.Engine, cfg *config
 }
 
 // setupCustomTracksRoutes 设置用户自定义音轨路由
-func setupCustomTracksRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection) {
+func setupCustomTracksRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection, authMiddleware gin.HandlerFunc) {
 	// 创建仓储实例
 	customTrackRepo := customtrackRepository.NewCustomTrackRepository(db.GetDB())
 
@@ -206,13 +193,12 @@ func setupCustomTracksRoutes(rg *gin.RouterGroup, cfg *config.Config, db *databa
 	customTrackHandler := customtrackHandler.NewCustomTrackHandler(customTrackService)
 
 	// 注册路由
-	customTrackHandler.RegisterRoutes(rg)
+	customTrackHandler.RegisterRoutes(rg, authMiddleware)
 }
 
 // setupAdminRoutes 设置管理员路由
 func setupAdminRoutes(rg *gin.RouterGroup, cfg *config.Config, db *database.Connection) {
 	// 创建仓储实例
-	adminRepo := adminRepository.NewAdminRepository(db.GetDB())
 	userRepo := userRepository.NewUserRepository(db.GetDB())
 	courseRepo := courseRepository.NewCourseRepository(db.GetDB())
 	trackRepo := trackRepository.NewTrackRepository(db.GetDB())

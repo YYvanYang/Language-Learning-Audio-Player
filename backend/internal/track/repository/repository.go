@@ -247,6 +247,15 @@ func (r *TrackRepository) FindBookmarksByTrack(userID, trackID string) ([]*domai
 	return domainBookmarks, nil
 }
 
+// Count 统计音轨总数
+func (r *TrackRepository) Count() (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.Track{}).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("统计音轨数量失败: %w", err)
+	}
+	return count, nil
+}
+
 // 辅助方法: 将数据库模型转换为领域模型
 func (r *TrackRepository) toDomain(model *models.Track) (*domain.Track, error) {
 	return &domain.Track{

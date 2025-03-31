@@ -198,6 +198,15 @@ func (r *CustomTrackRepository) Search(query string, userID string, page, pageSi
 	return result, total, nil
 }
 
+// Count 统计所有自定义音轨数量
+func (r *CustomTrackRepository) Count() (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.CustomTrack{}).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("统计自定义音轨数量失败: %w", err)
+	}
+	return count, nil
+}
+
 // 辅助方法: 将数据库模型转换为领域模型
 func (r *CustomTrackRepository) toDomain(model *models.CustomTrack) *domain.CustomTrack {
 	return &domain.CustomTrack{

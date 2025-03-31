@@ -36,6 +36,9 @@ type CustomTrackRepository interface {
 	// Delete 删除自定义音轨
 	Delete(id string) error
 
+	// Count 统计所有自定义音轨数量
+	Count() (int64, error)
+
 	// Search 搜索自定义音轨
 	Search(query string, userID string, page, pageSize int) ([]*CustomTrack, int64, error)
 }

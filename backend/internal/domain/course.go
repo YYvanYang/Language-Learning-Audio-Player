@@ -51,6 +51,12 @@ type CourseRepository interface {
 	// Delete 删除课程
 	Delete(id string) error
 
+	// Count 统计所有课程数量
+	Count() (int64, error)
+
+	// CountActive 统计活跃课程数量
+	CountActive(since time.Time) (int64, error)
+
 	// GetUnits 获取课程的所有单元
 	GetUnits(courseID string) ([]*Unit, error)
 

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -318,6 +319,32 @@ func (r *CourseRepository) ReorderUnits(courseID string, unitIDs []string) error
 
 		return nil
 	})
+}
+
+// Count 统计所有课程数量
+func (r *CourseRepository) Count() (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.Course{}).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("统计课程数量失败: %w", err)
+	}
+	return count, nil
+}
+
+// CountActive 统计活跃课程数量
+func (r *CourseRepository) CountActive(since time.Time) (int64, error) {
+	var count int64
+
+	// 统计有用户访问记录的课程数量
+	// 这里的实现取决于如何定义"活跃课程"，以下是一个示例实现
+	// 假设有一个用户进度表(user_progress)，记录用户对课程的学习记录
+	if err := r.db.Model(&models.UserProgress{}).
+		Select("COUNT(DISTINCT course_id)").
+		Where("updated_at >= ?", since).
+		Scan(&count).Error; err != nil {
+		return 0, fmt.Errorf("统计活跃课程数量失败: %w", err)
+	}
+
+	return count, nil
 }
 
 // 辅助方法: 将数据库模型转换为领域模型

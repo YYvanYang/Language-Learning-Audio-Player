@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -164,6 +165,30 @@ func (r *UserRepository) HasCourseAccess(userID, courseID string) (bool, error) 
 	}
 
 	return user.Role == "admin", nil
+}
+
+// CountActive 统计活跃用户数量
+func (r *UserRepository) CountActive(since time.Time) (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.User{}).Where("last_login_at >= ? AND active = true", since).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("统计活跃用户数量失败: %w", err)
+	}
+	return count, nil
+}
+
+// CountCreatedAfter 统计指定日期之后创建的用户数量
+func (r *UserRepository) CountCreatedAfter(date time.Time) (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.User{}).Where("created_at >= ?", date).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("统计新增用户数量失败: %w", err)
+	}
+	return count, nil
+}
+
+// FindAll 找到所有用户（用于管理员）
+func (r *UserRepository) FindAll(page, pageSize int) ([]*domain.User, int64, error) {
+	// 复用List方法，功能相同
+	return r.List(page, pageSize)
 }
 
 // mapToDomain 将数据库模型转换为领域模型

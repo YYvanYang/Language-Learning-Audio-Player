@@ -8,6 +8,7 @@ import (
 	"language-learning/internal/config"
 	"language-learning/internal/domain"
 	"language-learning/internal/utils/logger"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -121,7 +122,8 @@ func (s *AuthService) Register(req domain.RegisterRequest) (*domain.User, error)
 		ID:           uuid.New().String(),
 		Username:     req.Username,
 		Email:        req.Email,
-		Name:         req.Name,
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
 		PasswordHash: string(passwordHash),
 		Role:         "user", // 默认角色
 		Active:       true,   // 默认激活

@@ -14,6 +14,7 @@ type User struct {
 	Active       bool
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
+	LastLoginAt  time.Time
 }
 
 // UserRepository 用户仓储接口
@@ -41,6 +42,15 @@ type UserRepository interface {
 
 	// Count 统计用户数量
 	Count() (int64, error)
+
+	// CountActive 统计活跃用户数量
+	CountActive(since time.Time) (int64, error)
+
+	// CountCreatedAfter 统计指定日期之后创建的用户数量
+	CountCreatedAfter(date time.Time) (int64, error)
+
+	// FindAll 找到所有用户（用于管理员）
+	FindAll(page, pageSize int) ([]*User, int64, error)
 
 	// HasCourseAccess 检查用户是否有权访问课程
 	HasCourseAccess(userID, courseID string) (bool, error)
