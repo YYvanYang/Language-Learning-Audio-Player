@@ -1,5 +1,38 @@
 basePath: /api
 definitions:
+  domain.AdminStats:
+    properties:
+      activeCoursesCount:
+        type: integer
+      activeUsers:
+        type: integer
+      newUsersLastMonth:
+        type: integer
+      newUsersLastWeek:
+        type: integer
+      storageUsed:
+        description: 单位：字节
+        type: integer
+      systemStartTime:
+        type: string
+      totalCourses:
+        type: integer
+      totalCustomTracks:
+        type: integer
+      totalTracks:
+        type: integer
+      totalUsers:
+        type: integer
+    type: object
+  domain.ErrorResponse:
+    properties:
+      code:
+        type: string
+      details:
+        type: string
+      error:
+        type: string
+    type: object
   main.AudioBookmark:
     properties:
       color:
@@ -341,15 +374,15 @@ definitions:
 host: localhost:8080
 info:
   contact:
-    email: support@yourcompany.com
+    email: support@example.com
     name: API Support
-    url: http://www.yourcompany.com/support
-  description: 专为教育场景设计的音频播放系统API
+    url: http://www.example.com/support
+  description: 提供语言学习音频播放器的后端API服务
   license:
-    name: Apache 2.0
-    url: http://www.apache.org/licenses/LICENSE-2.0.html
+    name: MIT
+    url: https://opensource.org/licenses/MIT
   termsOfService: http://swagger.io/terms/
-  title: 语言学习音频播放器 API
+  title: 语言学习音频播放器API
   version: "1.0"
 paths:
   /api/admin/stats:
@@ -363,15 +396,15 @@ paths:
         "200":
           description: 系统统计信息
           schema:
-            $ref: '#/definitions/main.SystemStats'
+            $ref: '#/definitions/domain.AdminStats'
         "401":
           description: 未授权访问
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/domain.ErrorResponse'
         "403":
           description: 无管理员权限
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/domain.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 获取系统统计信息
@@ -381,7 +414,16 @@ paths:
     get:
       consumes:
       - application/json
-      description: 获取所有系统用户的列表
+      description: 获取所有系统用户的列表，支持分页
+      parameters:
+      - description: 页码，默认为1
+        in: query
+        name: page
+        type: integer
+      - description: 每页数量，默认为10
+        in: query
+        name: size
+        type: integer
       produces:
       - application/json
       responses:
@@ -393,11 +435,11 @@ paths:
         "401":
           description: 未授权访问
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/domain.ErrorResponse'
         "403":
           description: 无管理员权限
           schema:
-            $ref: '#/definitions/main.ErrorResponse'
+            $ref: '#/definitions/domain.ErrorResponse'
       security:
       - BearerAuth: []
       summary: 获取系统用户列表
@@ -1306,12 +1348,9 @@ paths:
       summary: 更新音轨播放进度
       tags:
       - tracks
-schemes:
-- http
-- https
 securityDefinitions:
   BearerAuth:
-    description: '使用Bearer方案的JWT授权头，格式为: Bearer {token}'
+    description: Type "Bearer" followed by a space and JWT token.
     in: header
     name: Authorization
     type: apiKey

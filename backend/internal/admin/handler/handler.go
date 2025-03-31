@@ -25,7 +25,17 @@ func NewAdminHandler(adminService domain.AdminService) *AdminHandler {
 	}
 }
 
-// GetStats 获取系统统计信息
+// GetStats godoc
+// @Summary 获取系统统计信息
+// @Description 获取系统运行的统计数据
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Success 200 {object} domain.AdminStats "系统统计信息"
+// @Failure 401 {object} domain.ErrorResponse "未授权访问"
+// @Failure 403 {object} domain.ErrorResponse "无管理员权限"
+// @Router /api/admin/stats [get]
+// @Security BearerAuth
 func (h *AdminHandler) GetStats(c *gin.Context) {
 	logger.Debug("处理获取系统统计信息请求")
 
@@ -41,7 +51,19 @@ func (h *AdminHandler) GetStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-// GetAllUsers 获取所有用户
+// GetAllUsers godoc
+// @Summary 获取系统用户列表
+// @Description 获取所有系统用户的列表，支持分页
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param page query int false "页码，默认为1"
+// @Param size query int false "每页数量，默认为10"
+// @Success 200 {object} map[string]interface{} "用户列表"
+// @Failure 401 {object} domain.ErrorResponse "未授权访问"
+// @Failure 403 {object} domain.ErrorResponse "无管理员权限"
+// @Router /api/admin/users [get]
+// @Security BearerAuth
 func (h *AdminHandler) GetAllUsers(c *gin.Context) {
 	// 获取分页参数
 	page, pageSize := getPagination(c)

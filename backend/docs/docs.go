@@ -12,12 +12,12 @@ const docTemplate = `{
         "termsOfService": "http://swagger.io/terms/",
         "contact": {
             "name": "API Support",
-            "url": "http://www.yourcompany.com/support",
-            "email": "support@yourcompany.com"
+            "url": "http://www.example.com/support",
+            "email": "support@example.com"
         },
         "license": {
-            "name": "Apache 2.0",
-            "url": "http://www.apache.org/licenses/LICENSE-2.0.html"
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
         },
         "version": "{{.Version}}"
     },
@@ -46,19 +46,19 @@ const docTemplate = `{
                     "200": {
                         "description": "系统统计信息",
                         "schema": {
-                            "$ref": "#/definitions/main.SystemStats"
+                            "$ref": "#/definitions/domain.AdminStats"
                         }
                     },
                     "401": {
                         "description": "未授权访问",
                         "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
+                            "$ref": "#/definitions/domain.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "无管理员权限",
                         "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
+                            "$ref": "#/definitions/domain.ErrorResponse"
                         }
                     }
                 }
@@ -71,7 +71,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "获取所有系统用户的列表",
+                "description": "获取所有系统用户的列表，支持分页",
                 "consumes": [
                     "application/json"
                 ],
@@ -82,6 +82,20 @@ const docTemplate = `{
                     "admin"
                 ],
                 "summary": "获取系统用户列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "页码，默认为1",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "每页数量，默认为10",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "用户列表",
@@ -93,13 +107,13 @@ const docTemplate = `{
                     "401": {
                         "description": "未授权访问",
                         "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
+                            "$ref": "#/definitions/domain.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "无管理员权限",
                         "schema": {
-                            "$ref": "#/definitions/main.ErrorResponse"
+                            "$ref": "#/definitions/domain.ErrorResponse"
                         }
                     }
                 }
@@ -1488,6 +1502,56 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "domain.AdminStats": {
+            "type": "object",
+            "properties": {
+                "activeCoursesCount": {
+                    "type": "integer"
+                },
+                "activeUsers": {
+                    "type": "integer"
+                },
+                "newUsersLastMonth": {
+                    "type": "integer"
+                },
+                "newUsersLastWeek": {
+                    "type": "integer"
+                },
+                "storageUsed": {
+                    "description": "单位：字节",
+                    "type": "integer"
+                },
+                "systemStartTime": {
+                    "type": "string"
+                },
+                "totalCourses": {
+                    "type": "integer"
+                },
+                "totalCustomTracks": {
+                    "type": "integer"
+                },
+                "totalTracks": {
+                    "type": "integer"
+                },
+                "totalUsers": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "details": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
         "main.AudioBookmark": {
             "type": "object",
             "properties": {
@@ -1977,7 +2041,7 @@ const docTemplate = `{
     },
     "securityDefinitions": {
         "BearerAuth": {
-            "description": "使用Bearer方案的JWT授权头，格式为: Bearer {token}",
+            "description": "Type \"Bearer\" followed by a space and JWT token.",
             "type": "apiKey",
             "name": "Authorization",
             "in": "header"
@@ -1990,9 +2054,9 @@ var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "localhost:8080",
 	BasePath:         "/api",
-	Schemes:          []string{"http", "https"},
-	Title:            "语言学习音频播放器 API",
-	Description:      "专为教育场景设计的音频播放系统API",
+	Schemes:          []string{},
+	Title:            "语言学习音频播放器API",
+	Description:      "提供语言学习音频播放器的后端API服务",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

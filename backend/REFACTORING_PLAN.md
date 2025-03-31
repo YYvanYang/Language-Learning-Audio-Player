@@ -485,6 +485,58 @@ func (s *UserService) Register(req domain.RegisterRequest) (*domain.User, error)
 - 业务逻辑文档化
 - API文档保持更新
 
+## 10. API文档更新
+
+为确保API文档与重构后的代码结构保持一致，需进行以下操作：
+
+### 10.1 Swagger注释添加
+
+- 为所有新的处理器函数添加完整的Swagger注释
+- 确保注释中的路由路径与实际注册路径一致
+- 解决"路由声明多次"的警告问题
+
+```go
+// 示例：为处理器函数添加Swagger注释
+// GetStats godoc
+// @Summary 获取系统统计信息
+// @Description 获取系统运行的统计数据
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Success 200 {object} domain.AdminStats "系统统计信息"
+// @Failure 401 {object} domain.ErrorResponse "未授权访问"
+// @Router /api/admin/stats [get]
+// @Security BearerAuth
+func (h *AdminHandler) GetStats(c *gin.Context) {
+    // 处理逻辑...
+}
+```
+
+### 10.2 模型定义完善
+
+- 确保所有API响应模型都在domain包中定义
+- 添加必要的自定义类型以满足Swagger生成需求
+
+```go
+// 在domain包中定义错误响应模型
+// ErrorResponse API错误响应
+type ErrorResponse struct {
+    Error   string `json:"error"`
+    Code    string `json:"code,omitempty"`
+    Details string `json:"details,omitempty"`
+}
+```
+
+### 10.3 文档更新流程
+
+1. 添加Swagger注释到处理器函数
+2. 在main.go中配置Swagger路由
+3. 使用swag命令重新生成文档：
+   ```bash
+   swag init -g cmd/api/main.go -o ./docs
+   ```
+4. 启动服务器，访问`/swagger/index.html`验证文档
+
 ---
 
 此重构计划将确保语言学习音频播放器后端系统采用现代化的架构模式，提高代码质量、可维护性和可扩展性，同时确保现有功能高度可用，满足生产级别、产品级别的要求。 
