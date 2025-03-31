@@ -424,6 +424,42 @@ func ErrorHandler() gin.HandlerFunc {
 }
 ```
 
+### 5.3 日志集成
+
+确保所有模块使用统一的日志记录器:
+```go
+// 在服务层使用日志
+import "github.com/YYvanYang/Language-Learning-Audio-Player/backend/internal/utils/logger"
+
+func (s *UserService) Register(req domain.RegisterRequest) (*domain.User, error) {
+    logger.Info("开始处理用户注册",
+        zap.String("username", req.Username),
+        zap.String("email", req.Email))
+    
+    // 业务逻辑...
+}
+```
+
+### 5.4 脚本目录组织
+
+为保持项目结构清晰，对脚本目录进行了优化:
+
+```
+backend/scripts/
+├── migrations/       # 数据库迁移和初始化脚本
+│   ├── init-db.sql   # 数据库初始化脚本
+│   └── update-db.sql # 数据库更新脚本
+│
+└── tools/            # 工具脚本
+    └── update-status.js # 项目状态更新工具
+```
+
+所有后端相关脚本都统一放在 `backend/scripts` 目录下，并按功能分类:
+- 迁移脚本 (`migrations/`) - 数据库初始化和更新相关脚本
+- 工具脚本 (`tools/`) - 自动化工具和实用程序脚本
+
+每个子目录包含自己的功能说明，确保脚本的用途明确。
+
 ## 6. 改进点和注意事项
 
 ### 6.1 路径问题修复
@@ -456,6 +492,26 @@ func (s *UserService) Register(req domain.RegisterRequest) (*domain.User, error)
     // 业务逻辑...
 }
 ```
+
+### 6.4 脚本目录组织
+
+为保持项目结构清晰，对脚本目录进行了优化:
+
+```
+backend/scripts/
+├── migrations/       # 数据库迁移和初始化脚本
+│   ├── init-db.sql   # 数据库初始化脚本
+│   └── update-db.sql # 数据库更新脚本
+│
+└── tools/            # 工具脚本
+    └── update-status.js # 项目状态更新工具
+```
+
+所有后端相关脚本都统一放在 `backend/scripts` 目录下，并按功能分类:
+- 迁移脚本 (`migrations/`) - 数据库初始化和更新相关脚本
+- 工具脚本 (`tools/`) - 自动化工具和实用程序脚本
+
+每个子目录包含自己的功能说明，确保脚本的用途明确。
 
 ## 7. 后续扩展计划
 
