@@ -35,6 +35,15 @@ type CourseUnitInfo struct {
 }
 
 // 获取用户课程列表
+// @Summary 获取用户课程列表
+// @Description 获取当前用户可访问的所有课程
+// @Tags courses
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{} "课程列表"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Router /api/courses [get]
+// @Security BearerAuth
 func getCoursesHandler(c *gin.Context) {
 	// 获取当前用户ID
 	userID, exists := c.Get("user_id")
@@ -263,6 +272,18 @@ func returnDefaultCourses(c *gin.Context) {
 }
 
 // 获取单一课程详情
+// @Summary 获取课程详情
+// @Description 获取指定课程的详细信息
+// @Tags courses
+// @Accept json
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Success 200 {object} CourseInfo "课程详情"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "访问被拒绝"
+// @Failure 404 {object} ErrorResponse "课程不存在"
+// @Router /api/courses/{courseId} [get]
+// @Security BearerAuth
 func getCourseHandler(c *gin.Context) {
 	// 获取课程ID
 	courseID := c.Param("courseId")
@@ -285,6 +306,18 @@ func getCourseHandler(c *gin.Context) {
 }
 
 // 获取课程单元
+// @Summary 获取课程单元列表
+// @Description 获取指定课程的所有单元
+// @Tags courses
+// @Accept json
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Success 200 {array} CourseUnitInfo "课程单元列表"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "访问被拒绝"
+// @Failure 404 {object} ErrorResponse "课程不存在"
+// @Router /api/courses/{courseId}/units [get]
+// @Security BearerAuth
 func getCourseUnitsHandler(c *gin.Context) {
 	// 获取课程ID
 	courseID := c.Param("courseId")
@@ -329,6 +362,19 @@ func getCourseUnitsHandler(c *gin.Context) {
 }
 
 // 获取单元音轨
+// @Summary 获取单元音轨列表
+// @Description 获取指定课程单元的所有音轨
+// @Tags courses
+// @Accept json
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Param unitId path string true "单元ID"
+// @Success 200 {array} map[string]interface{} "音轨列表"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "访问被拒绝"
+// @Failure 404 {object} ErrorResponse "课程或单元不存在"
+// @Router /api/courses/{courseId}/units/{unitId}/tracks [get]
+// @Security BearerAuth
 func getUnitTracksHandler(c *gin.Context) {
 	// 获取参数
 	courseID := c.Param("courseId")

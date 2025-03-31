@@ -37,6 +37,16 @@ type JWTClaims struct {
 }
 
 // 登录处理程序
+// @Summary 用户登录
+// @Description 验证用户凭据并返回JWT令牌
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param loginRequest body LoginRequest true "登录信息"
+// @Success 200 {object} LoginResponse "登录成功"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "认证失败"
+// @Router /api/auth/login [post]
 func loginHandler(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -104,6 +114,16 @@ func loginHandler(c *gin.Context) {
 }
 
 // 注册处理程序
+// @Summary 用户注册
+// @Description 创建新用户账户并返回JWT令牌
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param registerRequest body RegisterRequest true "注册信息"
+// @Success 201 {object} LoginResponse "注册成功"
+// @Failure 400 {object} ErrorResponse "请求无效或邮箱已被注册"
+// @Failure 500 {object} ErrorResponse "服务器错误"
+// @Router /api/auth/register [post]
 func registerHandler(c *gin.Context) {
 	log.Printf("注册请求开始处理: %s", c.Request.RemoteAddr)
 
@@ -205,6 +225,15 @@ func registerHandler(c *gin.Context) {
 }
 
 // 会话验证处理程序
+// @Summary 验证用户会话
+// @Description 验证当前用户会话状态并返回用户信息
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{} "用户信息"
+// @Failure 401 {object} ErrorResponse "无效会话"
+// @Router /api/auth/validate [get]
+// @Security BearerAuth
 func validateTokenHandler(c *gin.Context) {
 	userID, _ := c.Get("user_id")
 	userRepo := models.NewUserRepository(database.DB)
@@ -226,6 +255,13 @@ func validateTokenHandler(c *gin.Context) {
 }
 
 // 登出处理程序
+// @Summary 用户登出
+// @Description 清除用户认证信息
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{} "登出成功"
+// @Router /api/auth/logout [post]
 func logoutHandler(c *gin.Context) {
 	// 清除Cookie
 	c.SetCookie(

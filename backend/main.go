@@ -1,6 +1,27 @@
 // main.go
 package main
 
+// @title 语言学习音频播放器 API
+// @version 1.0
+// @description 专为教育场景设计的音频播放系统API
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.yourcompany.com/support
+// @contact.email support@yourcompany.com
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:8080
+// @BasePath /api
+// @schemes http https
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description 使用Bearer方案的JWT授权头，格式为: Bearer {token}
+
 import (
 	"context"
 	"fmt"
@@ -14,9 +35,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database"
 	"github.com/YYvanYang/Language-Learning-Audio-Player/backend/database/migrations"
+	_ "github.com/YYvanYang/Language-Learning-Audio-Player/backend/docs" // 导入自动生成的swagger文档
 )
 
 func main() {
@@ -166,23 +190,7 @@ func setupRouter() *gin.Engine {
 	v1 := router.Group("/api")
 
 	// 健康检查路由
-	v1.GET("/health", func(c *gin.Context) {
-		// 检查数据库连接
-		dbStatus := "healthy"
-		if database.DB != nil {
-			if err := database.DB.Ping(); err != nil {
-				dbStatus = "unhealthy: " + err.Error()
-			}
-		} else {
-			dbStatus = "not initialized"
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"status":  "ok",
-			"db":      dbStatus,
-			"version": "1.0.0",
-		})
-	})
+	v1.GET("/health", healthCheckHandler)
 
 	// 音频相关路由
 	audioRoutes := v1.Group("/audio")
@@ -265,6 +273,12 @@ func setupRouter() *gin.Engine {
 		authorized.POST("/track-progress", updateUserTrackProgressHandler)
 		authorized.GET("/recent-tracks", getRecentTracksHandler)
 	}
+
+	// 添加Swagger路由
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler,
+		ginSwagger.URL("/swagger/doc.json"),
+		ginSwagger.DefaultModelsExpandDepth(-1),
+		ginSwagger.DocExpansion("list")))
 
 	return router
 }
@@ -385,4 +399,28 @@ func createBasicTables() error {
 	log.Println("成功创建units表")
 
 	return nil
+}
+
+// @Summary 健康检查
+// @Description 检查API和数据库状态
+// @Tags system
+// @Produce json
+// @Success 200 {object} HealthResponse "服务状态"
+// @Router /api/health [get]
+func healthCheckHandler(c *gin.Context) {
+	// 检查数据库连接
+	dbStatus := "healthy"
+	if database.DB != nil {
+		if err := database.DB.Ping(); err != nil {
+			dbStatus = "unhealthy: " + err.Error()
+		}
+	} else {
+		dbStatus = "not initialized"
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "ok",
+		"db":      dbStatus,
+		"version": "1.0.0",
+	})
 }

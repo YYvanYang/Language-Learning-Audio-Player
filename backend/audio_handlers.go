@@ -83,6 +83,20 @@ func generateRandomString(length int) string {
 }
 
 // 获取音频访问令牌处理函数
+// @Summary 获取音频访问令牌
+// @Description 生成用于访问音频资源的临时令牌
+// @Tags audio
+// @Accept json
+// @Produce json
+// @Param trackId path string true "音轨ID"
+// @Param request body AudioTokenRequest true "令牌请求"
+// @Success 200 {object} AudioTokenResponse "令牌响应"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "访问被拒绝"
+// @Failure 404 {object} ErrorResponse "音频文件不存在"
+// @Router /api/audio/token/{trackId} [get]
+// @Security BearerAuth
 func getAudioTokenHandler(c *gin.Context) {
 	// 获取参数
 	trackID := c.Param("trackId")
@@ -166,6 +180,21 @@ func getAudioTokenHandler(c *gin.Context) {
 }
 
 // 简化的音频流处理函数 - 支持单一质量音频文件
+// @Summary 获取音频流
+// @Description 流式传输音频内容，支持范围请求
+// @Tags audio
+// @Accept json
+// @Produce octet-stream
+// @Param trackId path string true "音轨ID"
+// @Param token query string true "访问令牌"
+// @Param Range header string false "范围请求头"
+// @Success 200 {file} binary "音频文件"
+// @Success 206 {file} binary "部分内容(范围请求)"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "访问被拒绝"
+// @Failure 404 {object} ErrorResponse "音频文件不存在"
+// @Router /api/audio/stream/{trackId} [get]
 func streamAudioHandler(c *gin.Context) {
 	// 获取音轨ID
 	trackID := c.Param("trackId")
@@ -769,6 +798,17 @@ func userHasAccessToCourse(userID, courseID string) (bool, error) {
 }
 
 // 获取音频元数据处理程序
+// @Summary 获取音频元数据
+// @Description 获取音频文件的元数据信息，包括波形数据
+// @Tags audio
+// @Accept json
+// @Produce json
+// @Param trackId path string true "音轨ID"
+// @Success 200 {object} AudioMetadata "音频元数据"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 404 {object} ErrorResponse "音频文件不存在"
+// @Router /api/audio/metadata/{trackId} [get]
+// @Security BearerAuth
 func getAudioMetadataHandler(c *gin.Context) {
 	// 获取参数
 	trackID := c.Param("trackId")
@@ -1006,6 +1046,21 @@ func getUserAudioCustomData(userID, trackID string) (map[string]interface{}, err
 }
 
 // 音频上传处理程序
+// @Summary 上传自定义音频
+// @Description 上传用户自定义音频文件
+// @Tags audio
+// @Accept multipart/form-data
+// @Produce json
+// @Param file formData file true "音频文件"
+// @Param title formData string true "音频标题"
+// @Param courseId formData string true "课程ID"
+// @Param unitId formData string true "单元ID"
+// @Success 201 {object} map[string]interface{} "上传成功"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 413 {object} ErrorResponse "文件过大"
+// @Router /api/audio/upload [post]
+// @Security BearerAuth
 func uploadAudioHandler(c *gin.Context) {
 	// 获取当前已验证的用户ID
 	userID, exists := c.Get("user_id")
@@ -1248,6 +1303,15 @@ func saveUserTrack(track UserTrackInfo) error {
 }
 
 // 获取用户音轨列表处理程序
+// @Summary 获取用户音频列表
+// @Description 获取当前用户上传的所有音频文件
+// @Tags audio
+// @Accept json
+// @Produce json
+// @Success 200 {array} TrackResponse "音频列表"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Router /api/audio/user-tracks [get]
+// @Security BearerAuth
 func getUserTracksHandler(c *gin.Context) {
 	// 获取当前已验证的用户ID
 	userID, exists := c.Get("user_id")
@@ -1452,6 +1516,18 @@ type AudioFormatRequest struct {
 }
 
 // 获取自适应音频流处理程序
+// @Summary 自适应音频流
+// @Description 基于网络状况和客户端能力自动选择合适质量的音频流
+// @Tags audio
+// @Accept json
+// @Produce octet-stream
+// @Param trackId path string true "音轨ID"
+// @Param token query string true "访问令牌"
+// @Success 200 {file} binary "音频文件"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 404 {object} ErrorResponse "音频文件不存在"
+// @Router /api/audio/adaptive/{trackId} [get]
 func getAdaptiveStreamHandler(c *gin.Context) {
 	// 获取音轨ID
 	trackID := c.Param("trackId")
@@ -1956,6 +2032,17 @@ type TrackProgressRequest struct {
 }
 
 // 更新音轨播放进度
+// @Summary 更新音轨播放进度
+// @Description 保存用户的音轨播放位置和完成率
+// @Tags tracks
+// @Accept json
+// @Produce json
+// @Param progress body TrackProgressRequest true "进度信息"
+// @Success 200 {object} map[string]interface{} "更新成功"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Router /api/track-progress [post]
+// @Security BearerAuth
 func updateTrackProgressHandler(c *gin.Context) {
 	// 获取当前用户ID
 	userID, exists := c.Get("user_id")

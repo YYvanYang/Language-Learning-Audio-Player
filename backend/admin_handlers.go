@@ -33,6 +33,16 @@ type SystemStats struct {
 }
 
 // 获取系统用户列表
+// @Summary 获取系统用户列表
+// @Description 获取所有系统用户的列表
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]interface{} "用户列表"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无管理员权限"
+// @Router /api/admin/users [get]
+// @Security BearerAuth
 func getSystemUsersHandler(c *gin.Context) {
 	// 模拟用户数据
 	users := []SystemUser{
@@ -72,6 +82,18 @@ func getSystemUsersHandler(c *gin.Context) {
 }
 
 // 创建系统用户
+// @Summary 创建系统用户
+// @Description 创建新的系统用户
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param user body object true "用户信息"
+// @Success 201 {object} map[string]interface{} "创建成功"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无管理员权限"
+// @Router /api/admin/users [post]
+// @Security BearerAuth
 func createSystemUserHandler(c *gin.Context) {
 	var newUser struct {
 		Email    string `json:"email" binding:"required,email"`
@@ -102,6 +124,20 @@ func createSystemUserHandler(c *gin.Context) {
 }
 
 // 更新系统用户
+// @Summary 更新系统用户
+// @Description 更新现有系统用户的信息
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param userId path string true "用户ID"
+// @Param user body object true "用户更新信息"
+// @Success 200 {object} map[string]interface{} "更新成功"
+// @Failure 400 {object} ErrorResponse "请求无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无管理员权限"
+// @Failure 404 {object} ErrorResponse "用户不存在"
+// @Router /api/admin/users/{userId} [put]
+// @Security BearerAuth
 func updateSystemUserHandler(c *gin.Context) {
 	userID := c.Param("userId")
 
@@ -134,6 +170,18 @@ func updateSystemUserHandler(c *gin.Context) {
 }
 
 // 删除系统用户
+// @Summary 删除系统用户
+// @Description 删除指定的系统用户
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Param userId path string true "用户ID"
+// @Success 200 {object} map[string]interface{} "删除成功"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无管理员权限"
+// @Failure 404 {object} ErrorResponse "用户不存在"
+// @Router /api/admin/users/{userId} [delete]
+// @Security BearerAuth
 func deleteSystemUserHandler(c *gin.Context) {
 	userID := c.Param("userId")
 
@@ -145,6 +193,16 @@ func deleteSystemUserHandler(c *gin.Context) {
 }
 
 // 获取系统统计信息
+// @Summary 获取系统统计信息
+// @Description 获取系统运行的统计数据
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Success 200 {object} SystemStats "系统统计信息"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无管理员权限"
+// @Router /api/admin/stats [get]
+// @Security BearerAuth
 func getSystemStatsHandler(c *gin.Context) {
 	// 模拟系统统计数据
 	stats := SystemStats{

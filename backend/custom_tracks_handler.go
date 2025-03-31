@@ -36,6 +36,17 @@ type CustomTrack struct {
 }
 
 // 获取用户自定义音轨列表
+// @Summary 获取用户自定义音轨
+// @Description 获取用户在指定课程和单元下的自定义音轨
+// @Tags custom-tracks
+// @Accept json
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Param unitId path string true "单元ID"
+// @Success 200 {array} CustomTrack "自定义音轨列表"
+// @Failure 400 {object} ErrorResponse "参数无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Router /api/courses/{courseId}/units/{unitId}/custom-tracks [get]
 func getUserCustomTracksHandler(c *gin.Context) {
 	// 获取参数
 	courseID := c.Param("courseId")
@@ -110,6 +121,20 @@ func getCustomTracks(userID, courseID, unitID string) ([]CustomTrack, error) {
 }
 
 // 删除自定义音轨
+// @Summary 删除自定义音轨
+// @Description 删除用户创建的自定义音轨
+// @Tags custom-tracks
+// @Accept json
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Param unitId path string true "单元ID"
+// @Param trackId path string true "音轨ID"
+// @Success 200 {object} map[string]string "删除成功"
+// @Failure 400 {object} ErrorResponse "参数无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无权限操作"
+// @Failure 404 {object} ErrorResponse "音轨不存在"
+// @Router /api/courses/{courseId}/units/{unitId}/custom-tracks/{trackId} [delete]
 func deleteCustomTrackHandler(c *gin.Context) {
 	// 获取参数
 	courseID := c.Param("courseId")
@@ -210,6 +235,21 @@ func deleteAudioFile(filePath string) error {
 }
 
 // 更新自定义音轨标题
+// @Summary 更新自定义音轨
+// @Description 更新自定义音轨的标题和中文名称
+// @Tags custom-tracks
+// @Accept json
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Param unitId path string true "单元ID"
+// @Param trackId path string true "音轨ID"
+// @Param track body object true "更新信息"
+// @Success 200 {object} map[string]interface{} "更新成功"
+// @Failure 400 {object} ErrorResponse "参数无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无权限操作"
+// @Failure 404 {object} ErrorResponse "音轨不存在"
+// @Router /api/courses/{courseId}/units/{unitId}/custom-tracks/{trackId} [patch]
 func updateCustomTrackHandler(c *gin.Context) {
 	// 获取参数
 	courseID := c.Param("courseId")
@@ -290,6 +330,21 @@ func updateCustomTrackTitle(trackID, title, chineseName string) error {
 }
 
 // 重排序自定义音轨
+// @Summary 重排序自定义音轨
+// @Description 调整自定义音轨的排序顺序
+// @Tags custom-tracks
+// @Accept json
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Param unitId path string true "单元ID"
+// @Param trackId path string true "音轨ID"
+// @Param order body object true "排序信息"
+// @Success 200 {object} map[string]interface{} "排序成功"
+// @Failure 400 {object} ErrorResponse "参数无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 403 {object} ErrorResponse "无权限操作"
+// @Failure 404 {object} ErrorResponse "音轨不存在"
+// @Router /api/courses/{courseId}/units/{unitId}/custom-tracks/{trackId}/reorder [post]
 func reorderCustomTrackHandler(c *gin.Context) {
 	// 获取参数
 	courseID := c.Param("courseId")
@@ -363,6 +418,21 @@ func updateCustomTrackSortOrder(trackID string, sortOrder int) error {
 }
 
 // 添加自定义音轨
+// @Summary 添加自定义音轨
+// @Description 上传并添加新的自定义音轨
+// @Tags custom-tracks
+// @Accept multipart/form-data
+// @Produce json
+// @Param courseId path string true "课程ID"
+// @Param unitId path string true "单元ID"
+// @Param audioFile formData file true "音频文件"
+// @Param title formData string true "音轨标题"
+// @Param chineseName formData string false "中文标题"
+// @Success 201 {object} map[string]interface{} "添加成功"
+// @Failure 400 {object} ErrorResponse "参数无效"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Failure 413 {object} ErrorResponse "文件过大"
+// @Router /api/courses/{courseId}/units/{unitId}/custom-tracks [post]
 func addCustomTrackHandler(c *gin.Context) {
 	// 获取参数
 	courseID := c.PostForm("courseId")

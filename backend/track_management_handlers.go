@@ -358,6 +358,15 @@ func updateRecentlyPlayed(userID string, trackID string, position float64) error
 }
 
 // 获取最近播放音轨
+// @Summary 获取最近播放记录
+// @Description 获取用户最近播放过的音轨列表
+// @Tags tracks
+// @Accept json
+// @Produce json
+// @Success 200 {array} RecentTrackInfo "最近播放列表"
+// @Failure 401 {object} ErrorResponse "未授权访问"
+// @Router /api/recent-tracks [get]
+// @Security BearerAuth
 func getRecentTracksHandler(c *gin.Context) {
 	// 获取当前用户ID
 	userID, exists := c.Get("user_id")

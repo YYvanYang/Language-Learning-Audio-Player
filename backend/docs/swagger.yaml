@@ -1,0 +1,1318 @@
+basePath: /api
+definitions:
+  main.AudioBookmark:
+    properties:
+      color:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      notes:
+        type: string
+      timePoint:
+        type: number
+    type: object
+  main.AudioMetadata:
+    properties:
+      artist:
+        type: string
+      bitRate:
+        type: integer
+      bookmarks:
+        items:
+          $ref: '#/definitions/main.AudioBookmark'
+        type: array
+      channels:
+        type: integer
+      customData:
+        additionalProperties: true
+        type: object
+      duration:
+        type: number
+      format:
+        type: string
+      sampleRate:
+        type: integer
+      spectralData:
+        items:
+          type: number
+        type: array
+      title:
+        type: string
+      trackId:
+        type: string
+      transcriptData:
+        $ref: '#/definitions/main.AudioTranscript'
+      waveformData:
+        items:
+          type: number
+        type: array
+    type: object
+  main.AudioTokenRequest:
+    properties:
+      action:
+        enum:
+        - stream_audio
+        - get_metadata
+        type: string
+      courseId:
+        type: string
+      trackId:
+        type: string
+      unitId:
+        type: string
+    required:
+    - action
+    - courseId
+    - trackId
+    - unitId
+    type: object
+  main.AudioTokenResponse:
+    description: 音频访问令牌响应
+    properties:
+      expiresAt:
+        description: 过期时间戳
+        example: 1609459200
+        type: integer
+      token:
+        description: 访问令牌
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+    type: object
+  main.AudioTranscript:
+    properties:
+      language:
+        type: string
+      segments:
+        items:
+          $ref: '#/definitions/main.TranscriptSegment'
+        type: array
+    type: object
+  main.CourseInfo:
+    properties:
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      imageUrl:
+        type: string
+      language:
+        type: string
+      title:
+        type: string
+      unitCount:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  main.CourseUnitInfo:
+    properties:
+      courseId:
+        type: string
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      order:
+        type: integer
+      title:
+        type: string
+      trackCount:
+        type: integer
+      updatedAt:
+        type: string
+    type: object
+  main.CustomTrack:
+    properties:
+      chineseName:
+        type: string
+      courseId:
+        type: string
+      createdAt:
+        type: string
+      custom:
+        type: boolean
+      duration:
+        type: number
+      fileSize:
+        type: integer
+      format:
+        type: string
+      id:
+        type: string
+      sortOrder:
+        type: integer
+      title:
+        type: string
+      unitId:
+        type: string
+      updatedAt:
+        type: string
+      userId:
+        type: string
+    type: object
+  main.ErrorResponse:
+    description: API错误响应
+    properties:
+      error:
+        description: 错误信息
+        example: 未授权访问
+        type: string
+    type: object
+  main.HealthResponse:
+    description: 健康检查响应
+    properties:
+      db:
+        description: 数据库状态
+        example: healthy
+        type: string
+      status:
+        description: 服务状态
+        example: ok
+        type: string
+      version:
+        description: API版本
+        example: 1.0.0
+        type: string
+    type: object
+  main.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  main.LoginResponse:
+    description: 登录成功响应
+    properties:
+      message:
+        description: 成功消息
+        example: 登录成功
+        type: string
+      token:
+        description: JWT令牌
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+      user:
+        description: 用户信息
+        properties:
+          email:
+            description: 用户邮箱
+            example: user@example.com
+            type: string
+          id:
+            description: 用户ID
+            example: 123e4567-e89b-12d3-a456-426614174000
+            type: string
+          name:
+            description: 用户名称
+            example: 测试用户
+            type: string
+          role:
+            description: 用户角色
+            example: user
+            type: string
+        type: object
+    type: object
+  main.RecentTrackInfo:
+    properties:
+      completionRate:
+        type: number
+      courseId:
+        type: string
+      courseName:
+        type: string
+      id:
+        type: string
+      lastAccessed:
+        type: string
+      lastPosition:
+        type: number
+      title:
+        type: string
+      unitId:
+        type: string
+    type: object
+  main.RegisterRequest:
+    properties:
+      email:
+        type: string
+      name:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - name
+    - password
+    type: object
+  main.SystemStats:
+    properties:
+      activeUsers:
+        type: integer
+      averageApiLatency:
+        description: 毫秒
+        type: number
+      databaseSize:
+        description: 字节
+        type: integer
+      lastRestart:
+        type: string
+      systemUptime:
+        description: 小时
+        type: number
+      totalAudioFiles:
+        type: integer
+      totalCourses:
+        type: integer
+      totalStorage:
+        description: 字节
+        type: integer
+      totalUsers:
+        type: integer
+    type: object
+  main.TrackProgressRequest:
+    properties:
+      completionRate:
+        maximum: 100
+        minimum: 0
+        type: number
+      position:
+        minimum: 0
+        type: number
+      trackId:
+        type: string
+    required:
+    - position
+    - trackId
+    type: object
+  main.TrackResponse:
+    description: 音轨信息响应
+    properties:
+      chineseName:
+        description: 中文标题
+        example: 听力练习1：问候语
+        type: string
+      custom:
+        description: 是否为自定义音轨
+        example: false
+        type: boolean
+      duration:
+        description: 音轨时长(秒)
+        example: 65.5
+        type: number
+      id:
+        description: 音轨ID
+        example: track-789
+        type: string
+      sortOrder:
+        description: 排序顺序
+        example: 1
+        type: integer
+      title:
+        description: 音轨标题
+        example: 听力练习1：问候语
+        type: string
+      unitId:
+        description: 单元ID
+        example: unit-456
+        type: string
+    type: object
+  main.TranscriptSegment:
+    properties:
+      endTime:
+        type: number
+      startTime:
+        type: number
+      text:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@yourcompany.com
+    name: API Support
+    url: http://www.yourcompany.com/support
+  description: 专为教育场景设计的音频播放系统API
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: 语言学习音频播放器 API
+  version: "1.0"
+paths:
+  /api/admin/stats:
+    get:
+      consumes:
+      - application/json
+      description: 获取系统运行的统计数据
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 系统统计信息
+          schema:
+            $ref: '#/definitions/main.SystemStats'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无管理员权限
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取系统统计信息
+      tags:
+      - admin
+  /api/admin/users:
+    get:
+      consumes:
+      - application/json
+      description: 获取所有系统用户的列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 用户列表
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无管理员权限
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取系统用户列表
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: 创建新的系统用户
+      parameters:
+      - description: 用户信息
+        in: body
+        name: user
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 创建成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无管理员权限
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 创建系统用户
+      tags:
+      - admin
+  /api/admin/users/{userId}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除指定的系统用户
+      parameters:
+      - description: 用户ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无管理员权限
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 用户不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 删除系统用户
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: 更新现有系统用户的信息
+      parameters:
+      - description: 用户ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      - description: 用户更新信息
+        in: body
+        name: user
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无管理员权限
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 用户不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新系统用户
+      tags:
+      - admin
+  /api/audio/adaptive/{trackId}:
+    get:
+      consumes:
+      - application/json
+      description: 基于网络状况和客户端能力自动选择合适质量的音频流
+      parameters:
+      - description: 音轨ID
+        in: path
+        name: trackId
+        required: true
+        type: string
+      - description: 访问令牌
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: 音频文件
+          schema:
+            type: file
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 音频文件不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 自适应音频流
+      tags:
+      - audio
+  /api/audio/metadata/{trackId}:
+    get:
+      consumes:
+      - application/json
+      description: 获取音频文件的元数据信息，包括波形数据
+      parameters:
+      - description: 音轨ID
+        in: path
+        name: trackId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 音频元数据
+          schema:
+            $ref: '#/definitions/main.AudioMetadata'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 音频文件不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取音频元数据
+      tags:
+      - audio
+  /api/audio/stream/{trackId}:
+    get:
+      consumes:
+      - application/json
+      description: 流式传输音频内容，支持范围请求
+      parameters:
+      - description: 音轨ID
+        in: path
+        name: trackId
+        required: true
+        type: string
+      - description: 访问令牌
+        in: query
+        name: token
+        required: true
+        type: string
+      - description: 范围请求头
+        in: header
+        name: Range
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: 音频文件
+          schema:
+            type: file
+        "206":
+          description: 部分内容(范围请求)
+          schema:
+            type: file
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 访问被拒绝
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 音频文件不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取音频流
+      tags:
+      - audio
+  /api/audio/token/{trackId}:
+    get:
+      consumes:
+      - application/json
+      description: 生成用于访问音频资源的临时令牌
+      parameters:
+      - description: 音轨ID
+        in: path
+        name: trackId
+        required: true
+        type: string
+      - description: 令牌请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/main.AudioTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 令牌响应
+          schema:
+            $ref: '#/definitions/main.AudioTokenResponse'
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 访问被拒绝
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 音频文件不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取音频访问令牌
+      tags:
+      - audio
+  /api/audio/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传用户自定义音频文件
+      parameters:
+      - description: 音频文件
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: 音频标题
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: 课程ID
+        in: formData
+        name: courseId
+        required: true
+        type: string
+      - description: 单元ID
+        in: formData
+        name: unitId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 上传成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "413":
+          description: 文件过大
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 上传自定义音频
+      tags:
+      - audio
+  /api/audio/user-tracks:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户上传的所有音频文件
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 音频列表
+          schema:
+            items:
+              $ref: '#/definitions/main.TrackResponse'
+            type: array
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取用户音频列表
+      tags:
+      - audio
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: 验证用户凭据并返回JWT令牌
+      parameters:
+      - description: 登录信息
+        in: body
+        name: loginRequest
+        required: true
+        schema:
+          $ref: '#/definitions/main.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登录成功
+          schema:
+            $ref: '#/definitions/main.LoginResponse'
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 认证失败
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 用户登录
+      tags:
+      - auth
+  /api/auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: 清除用户认证信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 登出成功
+          schema:
+            additionalProperties: true
+            type: object
+      summary: 用户登出
+      tags:
+      - auth
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: 创建新用户账户并返回JWT令牌
+      parameters:
+      - description: 注册信息
+        in: body
+        name: registerRequest
+        required: true
+        schema:
+          $ref: '#/definitions/main.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 注册成功
+          schema:
+            $ref: '#/definitions/main.LoginResponse'
+        "400":
+          description: 请求无效或邮箱已被注册
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "500":
+          description: 服务器错误
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 用户注册
+      tags:
+      - auth
+  /api/auth/validate:
+    get:
+      consumes:
+      - application/json
+      description: 验证当前用户会话状态并返回用户信息
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 用户信息
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 无效会话
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 验证用户会话
+      tags:
+      - auth
+  /api/courses:
+    get:
+      consumes:
+      - application/json
+      description: 获取当前用户可访问的所有课程
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 课程列表
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取用户课程列表
+      tags:
+      - courses
+  /api/courses/{courseId}:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定课程的详细信息
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 课程详情
+          schema:
+            $ref: '#/definitions/main.CourseInfo'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 访问被拒绝
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 课程不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取课程详情
+      tags:
+      - courses
+  /api/courses/{courseId}/units:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定课程的所有单元
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 课程单元列表
+          schema:
+            items:
+              $ref: '#/definitions/main.CourseUnitInfo'
+            type: array
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 访问被拒绝
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 课程不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取课程单元列表
+      tags:
+      - courses
+  /api/courses/{courseId}/units/{unitId}/custom-tracks:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户在指定课程和单元下的自定义音轨
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      - description: 单元ID
+        in: path
+        name: unitId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 自定义音轨列表
+          schema:
+            items:
+              $ref: '#/definitions/main.CustomTrack'
+            type: array
+        "400":
+          description: 参数无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 获取用户自定义音轨
+      tags:
+      - custom-tracks
+    post:
+      consumes:
+      - multipart/form-data
+      description: 上传并添加新的自定义音轨
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      - description: 单元ID
+        in: path
+        name: unitId
+        required: true
+        type: string
+      - description: 音频文件
+        in: formData
+        name: audioFile
+        required: true
+        type: file
+      - description: 音轨标题
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: 中文标题
+        in: formData
+        name: chineseName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: 添加成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "413":
+          description: 文件过大
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 添加自定义音轨
+      tags:
+      - custom-tracks
+  /api/courses/{courseId}/units/{unitId}/custom-tracks/{trackId}:
+    delete:
+      consumes:
+      - application/json
+      description: 删除用户创建的自定义音轨
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      - description: 单元ID
+        in: path
+        name: unitId
+        required: true
+        type: string
+      - description: 音轨ID
+        in: path
+        name: trackId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 删除成功
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: 参数无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无权限操作
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 音轨不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 删除自定义音轨
+      tags:
+      - custom-tracks
+    patch:
+      consumes:
+      - application/json
+      description: 更新自定义音轨的标题和中文名称
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      - description: 单元ID
+        in: path
+        name: unitId
+        required: true
+        type: string
+      - description: 音轨ID
+        in: path
+        name: trackId
+        required: true
+        type: string
+      - description: 更新信息
+        in: body
+        name: track
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无权限操作
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 音轨不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 更新自定义音轨
+      tags:
+      - custom-tracks
+  /api/courses/{courseId}/units/{unitId}/custom-tracks/{trackId}/reorder:
+    post:
+      consumes:
+      - application/json
+      description: 调整自定义音轨的排序顺序
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      - description: 单元ID
+        in: path
+        name: unitId
+        required: true
+        type: string
+      - description: 音轨ID
+        in: path
+        name: trackId
+        required: true
+        type: string
+      - description: 排序信息
+        in: body
+        name: order
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 排序成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 参数无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 无权限操作
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 音轨不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      summary: 重排序自定义音轨
+      tags:
+      - custom-tracks
+  /api/courses/{courseId}/units/{unitId}/tracks:
+    get:
+      consumes:
+      - application/json
+      description: 获取指定课程单元的所有音轨
+      parameters:
+      - description: 课程ID
+        in: path
+        name: courseId
+        required: true
+        type: string
+      - description: 单元ID
+        in: path
+        name: unitId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 音轨列表
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "403":
+          description: 访问被拒绝
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "404":
+          description: 课程或单元不存在
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取单元音轨列表
+      tags:
+      - courses
+  /api/health:
+    get:
+      description: 检查API和数据库状态
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 服务状态
+          schema:
+            $ref: '#/definitions/main.HealthResponse'
+      summary: 健康检查
+      tags:
+      - system
+  /api/recent-tracks:
+    get:
+      consumes:
+      - application/json
+      description: 获取用户最近播放过的音轨列表
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 最近播放列表
+          schema:
+            items:
+              $ref: '#/definitions/main.RecentTrackInfo'
+            type: array
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 获取最近播放记录
+      tags:
+      - tracks
+  /api/track-progress:
+    post:
+      consumes:
+      - application/json
+      description: 保存用户的音轨播放位置和完成率
+      parameters:
+      - description: 进度信息
+        in: body
+        name: progress
+        required: true
+        schema:
+          $ref: '#/definitions/main.TrackProgressRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 更新成功
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: 请求无效
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+        "401":
+          description: 未授权访问
+          schema:
+            $ref: '#/definitions/main.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: 更新音轨播放进度
+      tags:
+      - tracks
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: '使用Bearer方案的JWT授权头，格式为: Bearer {token}'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
